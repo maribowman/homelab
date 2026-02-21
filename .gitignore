@@ -1,0 +1,5 @@
+*.retry
+*.log
+.vault_pass
+**/vault.yaml
+
