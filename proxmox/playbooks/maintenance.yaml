@@ -1,0 +1,16 @@
+---
+- name: System maintenance
+  hosts: all
+  become: true
+
+  roles:
+    - role: snapshot_machines
+    - role: manage_docker
+      vars:
+        docker_state: "down"
+      when: inventory_hostname in groups['docker_hosts']
+    - role: update_machines
+    - role: manage_docker
+      vars:
+        docker_state: "up"
+      when: inventory_hostname in groups['docker_hosts']

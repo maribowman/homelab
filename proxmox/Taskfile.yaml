@@ -1,0 +1,52 @@
+version: "3"
+
+vars:
+  PLAYBOOK: "playbooks/maintenance.yaml" # TODO: Update once there are more playbooks
+  INVENTORY: "inventory/hosts.ini"
+  VAULT_PWD_FILE: "inventory/group_vars/all/.vault.pass"
+
+tasks:
+  init:
+    desc: "Install all required dependencies to run the playbooks"
+    silent: true
+    sources:
+      - requirements.txt
+      - requirements.yaml
+    generates:
+      - .venv/last-updated # dummy to save last-updated timestamp
+    cmds:
+      - python3 -m venv .venv
+      - .venv/bin/pip install -r requirements.txt
+      - .venv/bin/ansible-galaxy collection install -r requirements.yaml
+      - touch .venv/last-updated
+
+  dry:
+    desc: "Dry-runs the maintenance playbook"
+    silent: true
+    cmd: |
+      .venv/bin/ansible-playbook "{{.PLAYBOOK}}" \
+      -i "{{.INVENTORY}}" \
+      -e "execution_mode=dry" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}"
+
+  run:
+    desc: "Run the maintenance playbook"
+    silent: true
+    cmd: |
+      .venv/bin/ansible-playbook "{{.PLAYBOOK}}" \
+      -i "{{.INVENTORY}}" \
+      -e "execution_mode=run" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}"
+
+  syntax:
+    desc: "Checks the Ansbile playbook syntax"
+    silent: true
+    cmd: ansible-playbook "{{.PLAYBOOK}}" -i "{{.INVENTORY}}" --syntax-check
+
+  ping:
+    desc: "Tests the SSH connection to all inventory machines"
+    silent: true
+    cmd: |
+      ansible all -i "{{.INVENTORY}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      -m ping

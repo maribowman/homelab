@@ -1,0 +1,9 @@
+# Proxmox settings
+pve_host: "192.168.0.100"
+pve_node: "pve"
+pve_user: "root@pam"
+pve_token_id: "maintenance"
+
+# Misc
+retention_days: 21
+dockge_stacks_path: "/opt/stacks"

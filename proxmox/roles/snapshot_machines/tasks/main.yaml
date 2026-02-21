@@ -1,0 +1,13 @@
+---
+- name: Create machine snapshot
+  community.proxmox.proxmox_snap:
+    api_host: "{{ pve_host }}"
+    api_user: "{{ pve_user }}"
+    api_token_id: "{{ pve_token_id }}"
+    api_token_secret: "{{ pve_token_secret }}"
+    vmid: "{{ vmid }}"
+    state: present
+    snapname: "pre_update_{{ ansible_facts['date_time']['date'] }}"
+    retention: 2
+  delegate_to: localhost
+  become: false
