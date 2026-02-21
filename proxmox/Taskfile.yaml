@@ -2,7 +2,6 @@ version: "3"
 
 vars:
   PLAYBOOK: "playbooks/maintenance.yaml" # TODO: Update once there are more playbooks
-  INVENTORY: "inventory/hosts.ini"
   VAULT_PWD_FILE: "inventory/group_vars/all/.vault.pass"
 
 tasks:
@@ -25,7 +24,6 @@ tasks:
     silent: true
     cmd: |
       .venv/bin/ansible-playbook "{{.PLAYBOOK}}" \
-      -i "{{.INVENTORY}}" \
       -e "execution_mode=dry" \
       --vault-password-file "{{.VAULT_PWD_FILE}}"
 
@@ -34,19 +32,16 @@ tasks:
     silent: true
     cmd: |
       .venv/bin/ansible-playbook "{{.PLAYBOOK}}" \
-      -i "{{.INVENTORY}}" \
       -e "execution_mode=run" \
       --vault-password-file "{{.VAULT_PWD_FILE}}"
 
   syntax:
     desc: "Checks the Ansbile playbook syntax"
     silent: true
-    cmd: ansible-playbook "{{.PLAYBOOK}}" -i "{{.INVENTORY}}" --syntax-check
+    cmd: ansible-playbook "{{.PLAYBOOK}}" --syntax-check
 
   ping:
     desc: "Tests the SSH connection to all inventory machines"
     silent: true
     cmd: |
-      ansible all -i "{{.INVENTORY}}" \
-      --vault-password-file "{{.VAULT_PWD_FILE}}" \
-      -m ping
+      ansible all --vault-password-file "{{.VAULT_PWD_FILE}}" -m ping
