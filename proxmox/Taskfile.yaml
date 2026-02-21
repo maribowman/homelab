@@ -22,6 +22,7 @@ tasks:
   dry:
     desc: "Dry-runs the maintenance playbook"
     silent: true
+    deps: [ init ]
     cmd: |
       .venv/bin/ansible-playbook "{{.PLAYBOOK}}" \
       -e "execution_mode=dry" \
@@ -30,6 +31,7 @@ tasks:
   run:
     desc: "Run the maintenance playbook"
     silent: true
+    deps: [ init ]
     cmd: |
       .venv/bin/ansible-playbook "{{.PLAYBOOK}}" \
       -e "execution_mode=run" \
@@ -43,5 +45,4 @@ tasks:
   ping:
     desc: "Tests the SSH connection to all inventory machines"
     silent: true
-    cmd: |
-      ansible all --vault-password-file "{{.VAULT_PWD_FILE}}" -m ping
+    cmd: ansible all --vault-password-file "{{.VAULT_PWD_FILE}}" -m ping
