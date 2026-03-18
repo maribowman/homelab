@@ -18,12 +18,13 @@ services:
 
       - name: "TrueNAS"
         logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/truenas.png"
-        subtitle: "NAS Speicher"
+        subtitle: "NAS Storage"
         url: "http://192.168.0.138"
         target: "_blank"
 
       - name: "Dockge"
         logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/dockge.png"
+        subtitle: "Docker Container"
         url: "http://192.168.0.68:5001"
         target: "_blank"
 
