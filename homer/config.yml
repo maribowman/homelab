@@ -1,0 +1,112 @@
+---
+title: "HomeLab"
+subtitle: "Dashboard"
+
+logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/homer.png"
+favicon: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/homer.png"
+connectivityCheck: true
+
+services:
+  - name: "Infrastructure & Server"
+    icon: "fas fa-server"
+    items:
+      - name: "Proxmox"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/proxmox.png"
+        subtitle: "Hypervisor"
+        url: "https://192.168.0.100:8006"
+        target: "_blank"
+
+      - name: "TrueNAS"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/truenas.png"
+        subtitle: "NAS Speicher"
+        url: "http://192.168.0.138"
+        target: "_blank"
+
+      - name: "Dockge"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/dockge.png"
+        url: "http://192.168.0.68:5001"
+        target: "_blank"
+
+      - name: "Synology"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/synology.png"
+        subtitle: "Backup Server"
+        url: "https://192.168.0.3:5001/"
+        target: "_blank"
+
+      - name: "Home Assistant"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/home-assistant.png"
+        subtitle: "Smart Home"
+        url: "http://192.168.0.2:8123/lovelace/default_view"
+        target: "_blank"
+
+  - name: "Files & Media"
+    icon: "fas fa-photo-video"
+    items:
+      - name: "Immich"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/immich.png"
+        subtitle: "Photos"
+        url: "http://192.168.0.138:2283"
+        target: "_blank"
+
+      - name: "Jellyfin"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/jellyfin.png"
+        subtitle: "Streaming"
+        url: "http://192.168.0.138:8096"
+        target: "_blank"
+
+      - name: "Syncthing"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/syncthing.png"
+        subtitle: "Sync"
+        url: "http://192.168.0.138:8384"
+        target: "_blank"
+
+      - name: "Filebrowser"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/filebrowser.png"
+        subtitle: "File Manager"
+        url: "http://192.168.0.138:8181"
+        target: "_blank"
+
+      - name: "RustFS"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/rustfs.png"
+        subtitle: "S3 File Server"
+        url: "https://192.168.0.138:9000/rustfs/console/auth/login/"
+        target: "_blank"
+
+  - name: "Tools & Apps"
+    icon: "fas fa-tools"
+    items:
+      - name: "Paperless-ngx"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/paperless-ngx.png"
+        subtitle: "Document Management"
+        url: "http://192.168.0.138:8000"
+        target: "_blank"
+
+      - name: "Actual Budget"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/actual-budget.png"
+        subtitle: "Finance Management"
+        url: "http://192.168.0.138:5006"
+        target: "_blank"
+
+      - name: "Vikunja"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/vikunja.png"
+        subtitle: "Taskboard"
+        url: "http://192.168.0.138:3456"
+        target: "_blank"
+
+      - name: "qBittorrent"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/qbittorrent.png"
+        subtitle: "Downloads"
+        url: "http://192.168.0.138:8085"
+        target: "_blank"
+
+      - name: "Frigate"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/frigate.png"
+        subtitle: "Cameras"
+        url: "https://192.168.0.138:5000"
+        target: "_blank"
+
+      - name: "BentoPDF"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/bentopdf.png"
+        subtitle: "PDF Tools"
+        url: "http://192.168.0.138:8282"
+        target: "_blank"
