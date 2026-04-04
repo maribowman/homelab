@@ -4,7 +4,7 @@
   become: true
 
   vars:
-    local_stacks_path: "{{ playbook_dir }}/../../docker"
+    local_stacks_path: "{{ playbook_dir }}/../../docker/stacks"
 
   roles:
     - role: deploy_docker_stacks
