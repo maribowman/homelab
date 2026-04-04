@@ -1,0 +1,13 @@
+version: "3"
+
+vars:
+  PLAYBOOK: "{{.ROOT_DIR}}/playbooks/docker.yaml"
+
+tasks:
+  deploy:
+    desc: "Copy docker stacks to the docker VM and deploy"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}"

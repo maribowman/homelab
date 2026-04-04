@@ -1,0 +1,35 @@
+version: "3"
+
+vars:
+  PLAYBOOK: "{{.ROOT_DIR}}/playbooks/proxmox.yaml"
+
+tasks:
+  dry:
+    desc: "Dry-run the Proxmox maintenance playbook"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      -e "execution_mode=dry" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}"
+
+  run:
+    desc: "Run the Proxmox maintenance playbook"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      -e "execution_mode=run" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}"
+
+  syntax:
+    desc: "Check the Proxmox maintenance playbook syntax"
+    silent: true
+    deps: [":init"]
+    cmd: '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check'
+
+  ping:
+    desc: "Test the SSH connection to all inventory machines"
+    silent: true
+    deps: [":init"]
+    cmd: '"{{.VENV}}/bin/ansible" all --vault-password-file "{{.VAULT_PWD_FILE}}" -m ping'
