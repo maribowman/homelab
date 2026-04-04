@@ -1,22 +1,12 @@
 version: "3"
 
 tasks:
-  dry:
-    desc: "Dry-run Proxmox machine updates"
-    silent: true
-    deps: [":init"]
-    cmd: |
-      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
-      -e "execution_mode=dry" \
-      --vault-password-file "{{.VAULT_PWD_FILE}}"
-
   update:
     desc: "Run Proxmox machine updates"
     silent: true
     deps: [":init"]
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
-      -e "execution_mode=run" \
       --vault-password-file "{{.VAULT_PWD_FILE}}"
 
   syntax:
