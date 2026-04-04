@@ -1,27 +1,21 @@
-# homelab
+# Homelab
 
-Personal homelab infrastructure managed with Ansible.
+Personal Homelab infrastructure managed with [Ansible](https://docs.ansible.com/) and [Taskfiles](https://taskfile.dev/).
 
 ## Docker stacks
 
 ### Observability
 
-Grafana Alloy collects:
+- Logs are scraped from all Docker containers on the [Proxmox](https://proxmox.com/) DockerVM
+- Metrics are scraped from the Proxmox DockerVM, all Observability stack containers and the Synology NAS
 
-- Logs from all Docker containers on the Proxmox DockerVM
-- System logs from Proxmox DockerVM
-- Metrics from node-exporter, cAdvisor, Prometheus, Loki, Grafana, and Alloy itself
-- Metrics from Synology NAS
+All metrics and logs are visualized in [Grafana](https://grafana.com/oss/grafana/) dashboards.
 
-All metrics are remote-written to Prometheus. Logs are pushed to Loki. Both are visualized in Grafana.
+### Roastbeef-Swag
+
+Personal Discord Bot written in [go](https://go.dev/).
 
 ## Automation
-
-Tasks are run via [Task](https://taskfile.dev). Dependencies (Python venv + Ansible collections) are automatically installed and updated.
-
-```
-task --list
-```
 
 ### Proxmox
 
@@ -34,5 +28,5 @@ task ansible:proxmox:ping     # Test SSH connectivity to all hosts
 ### Docker
 
 ```sh
-task ansible:docker:deploy    # Sync stacks from repo to VM and run docker compose up
+task ansible:docker:deploy    # Sync stacks from repo to DockerVM and reload Docker stacks
 ```
