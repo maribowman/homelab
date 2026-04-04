@@ -8,4 +8,6 @@
 
   roles:
     - role: sync_docker_stacks
+      # TODO: Use a docker stack restart like the one dockge does.
+      #       Otherwise stack does not reload config changes.
     - role: deploy_docker_stacks
