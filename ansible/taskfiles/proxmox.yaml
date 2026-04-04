@@ -2,7 +2,7 @@ version: "3"
 
 tasks:
   dry:
-    desc: "Dry-run the Proxmox maintenance playbook"
+    desc: "Dry-run Proxmox machine updates"
     silent: true
     deps: [":init"]
     cmd: |
@@ -10,8 +10,8 @@ tasks:
       -e "execution_mode=dry" \
       --vault-password-file "{{.VAULT_PWD_FILE}}"
 
-  run:
-    desc: "Run the Proxmox maintenance playbook"
+  update:
+    desc: "Run Proxmox machine updates"
     silent: true
     deps: [":init"]
     cmd: |
@@ -20,13 +20,13 @@ tasks:
       --vault-password-file "{{.VAULT_PWD_FILE}}"
 
   syntax:
-    desc: "Check the Proxmox maintenance playbook syntax"
+    desc: "Check Proxmox playbook"
     silent: true
     deps: [":init"]
     cmd: '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check'
 
   ping:
-    desc: "Test the SSH connection to all inventory machines"
+    desc: "Test the SSH connection to all Proxmox machines"
     silent: true
     deps: [":init"]
     cmd: '"{{.VENV}}/bin/ansible" all --vault-password-file "{{.VAULT_PWD_FILE}}" -m ping'
