@@ -1,6 +1,8 @@
 *.retry
 *.log
 
+**/data
+
 **/*.pass
 **/vault.yaml
 
