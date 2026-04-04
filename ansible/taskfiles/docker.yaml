@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  PLAYBOOK: "{{.ROOT_DIR}}/playbooks/docker.yaml"
+  PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/docker.yaml"
 
 tasks:
   deploy:
