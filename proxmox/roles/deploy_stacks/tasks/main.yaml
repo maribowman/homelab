@@ -1,0 +1,40 @@
+---
+- name: Ensure rsync is installed
+  ansible.builtin.package:
+    name: rsync
+    state: present
+
+- name: Push local stacks to remote
+  ansible.posix.synchronize:
+    src: "{{ local_stacks_path }}/"
+    dest: "{{ dockge_stacks_path }}/"
+    recursive: true
+
+- name: Pull remote-only stacks to local git
+  ansible.posix.synchronize:
+    src: "{{ dockge_stacks_path }}/"
+    dest: "{{ local_stacks_path }}/"
+    recursive: true
+    mode: pull
+    rsync_opts:
+      - "--exclude=dockge"
+
+- name: Find all compose files on host
+  ansible.builtin.find:
+    paths: "{{ dockge_stacks_path }}"
+    patterns:
+      - "docker-compose.yaml"
+      - "docker-compose.yml"
+      - "compose.yaml"
+      - "compose.yml"
+    file_type: file
+    recurse: true
+  register: compose_files
+
+- name: Apply stack changes
+  ansible.builtin.shell: "docker compose up -d"
+  args:
+    chdir: "{{ item.path | dirname }}"
+  loop: "{{ compose_files.files }}"
+  when: (item.path | dirname | basename) != 'dockge'
+  ignore_errors: true

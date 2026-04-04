@@ -1,0 +1,10 @@
+---
+- name: Deploy Docker stacks
+  hosts: docker_hosts
+  become: true
+
+  vars:
+    local_stacks_path: "{{ playbook_dir }}/../../docker"
+
+  roles:
+    - role: sync_stacks
