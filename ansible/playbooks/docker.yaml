@@ -7,4 +7,6 @@
     local_stacks_path: "{{ playbook_dir }}/../../docker"
 
   roles:
-    - role: sync_stacks
+    - role: deploy_docker_stacks
+      vars:
+        sync_stacks: true

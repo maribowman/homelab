@@ -3,12 +3,14 @@
   ansible.builtin.package:
     name: rsync
     state: present
+  when: sync_stacks
 
 - name: Push local stacks to remote
   ansible.posix.synchronize:
     src: "{{ local_stacks_path }}/"
     dest: "{{ dockge_stacks_path }}/"
     recursive: true
+  when: sync_stacks
 
 - name: Pull remote-only stacks to local git
   ansible.posix.synchronize:
@@ -18,6 +20,7 @@
     mode: pull
     rsync_opts:
       - "--exclude=dockge"
+  when: sync_stacks
 
 - name: Find all compose files on host
   ansible.builtin.find:
@@ -31,8 +34,10 @@
     recurse: true
   register: compose_files
 
-- name: Apply stack changes
-  ansible.builtin.shell: "docker compose up -d"
+- name: "{{ docker_state | capitalize }} stacks"
+  vars:
+    _compose_args: { up: "up -d", down: "down" }
+  ansible.builtin.shell: "docker compose {{ _compose_args[docker_state] }}"
   args:
     chdir: "{{ item.path | dirname }}"
   loop: "{{ compose_files.files }}"
