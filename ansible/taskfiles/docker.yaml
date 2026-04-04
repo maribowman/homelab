@@ -1,8 +1,5 @@
 version: "3"
 
-vars:
-  PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/docker.yaml"
-
 tasks:
   deploy:
     desc: "Copy docker stacks to the docker VM and deploy"

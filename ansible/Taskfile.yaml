@@ -10,15 +10,15 @@ includes:
   proxmox:
     taskfile: ./taskfiles/proxmox.yaml
     vars:
-      REPO_ROOT: "{{.REPO_ROOT}}"
       VENV: "{{.VENV}}"
       VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
+      PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/proxmox.yaml"
   docker:
     taskfile: ./taskfiles/docker.yaml
     vars:
-      REPO_ROOT: "{{.REPO_ROOT}}"
       VENV: "{{.VENV}}"
       VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
+      PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/docker.yaml"
 
 tasks:
   init:

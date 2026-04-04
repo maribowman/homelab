@@ -1,8 +1,5 @@
 version: "3"
 
-vars:
-  PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/proxmox.yaml"
-
 tasks:
   dry:
     desc: "Dry-run the Proxmox maintenance playbook"

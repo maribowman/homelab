@@ -8,11 +8,9 @@
     - role: deploy_docker_stacks
       vars:
         docker_state: "down"
-        sync_stacks: false
       when: inventory_hostname in groups['docker_hosts']
     - role: update_proxmox_machines
     - role: deploy_docker_stacks
       vars:
         docker_state: "up"
-        sync_stacks: false
       when: inventory_hostname in groups['docker_hosts']

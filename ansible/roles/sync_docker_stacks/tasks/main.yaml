@@ -1,0 +1,15 @@
+---
+- name: Push local stacks to remote
+  ansible.posix.synchronize:
+    src: "{{ local_stacks_path }}/"
+    dest: "{{ dockge_stacks_path }}/"
+    recursive: true
+
+- name: Pull remote-only stacks to local git
+  ansible.posix.synchronize:
+    src: "{{ dockge_stacks_path }}/"
+    dest: "{{ local_stacks_path }}/"
+    recursive: true
+    mode: pull
+    rsync_opts:
+      - "--exclude=dockge"
