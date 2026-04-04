@@ -1,0 +1,24 @@
+declare "scrape_metrics" {
+    argument "targets" {
+        comment = "List of scrape targets"
+        optional = false
+    }
+
+    argument "forward_to" {
+        comment = "List of push target receivers"
+        optional = false
+    }
+
+    argument "job_label" {
+        comment = "Label of the scrape metrics job"
+        optional = false
+    }
+
+    prometheus.scrape "metrics" {
+        targets = argument.targets.value
+        forward_to = argument.forward_to.value
+
+        scrape_interval = "30s"
+        job_name = argument.job_label.value
+    }
+}

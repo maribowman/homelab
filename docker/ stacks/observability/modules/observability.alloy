@@ -1,0 +1,44 @@
+declare "scrape_metrics" {
+    argument "targets" {
+        comment = "List of scrape targets, e.g. `[{ __address__ = 'loki:3100'}]`"
+        optional = false
+    }
+
+    argument "forward_to" {
+        comment = "List of push target receivers, e.g. `[prometheus.remote_write.prometheus.receiver]`"
+        optional = false
+    }
+
+    argument "job_label" {
+        comment = "Label of the observability self-monitoring job"
+        optional = true
+        default = "observability-self-monitoring"
+    }
+
+    prometheus.scrape "metrics" {
+        targets = argument.targets.value
+        forward_to = argument.forward_to.value
+
+        scrape_interval = "30s"
+        job_name = argument.job_label.value
+    }
+
+    prometheus.exporter.self "alloy_exporter" {}
+
+    prometheus.scrape "alloy" {
+        targets = prometheus.exporter.self.alloy_exporter.targets
+        forward_to = [prometheus.relabel.alloy_relabel.receiver]
+
+        scrape_interval = "30s"
+        job_name = argument.job_label.value
+    }
+
+    prometheus.relabel "alloy_relabel" {
+        forward_to = argument.forward_to.value
+
+        rule {
+            target_label = "instance"
+            replacement = "alloy"
+        }
+    }
+}

@@ -1,0 +1,11 @@
+services:
+  roastbeef-swag:
+    image: ghcr.io/maribowman/roastbeef-swag:latest
+    container_name: roastbeef-swag
+    restart: always
+    ports:
+      - 8800:8800
+    volumes:
+      - ./data:/data
+    command: prod
+networks: {}

@@ -1,0 +1,63 @@
+// DOCKER CONTAINER DISCOVERY
+
+discovery.docker "docker_containers" {
+    host = "unix:///var/run/docker.sock"
+}
+
+// OBSERVABILITY METRICS
+
+import.file "observability" {
+    filename = "/etc/alloy/modules/observability.alloy"
+}
+
+observability.scrape_metrics "observability_metrics" {
+    targets = [
+        { "__address__" = "node-exporter:9100", "instance" = "node-exporter" },
+        { "__address__" = "cadvisor:8080", "instance" = "cadvisor" },
+        { "__address__" = "prometheus:9090", "instance" = "prometheus" },
+        { "__address__" = "loki:3100", "instance" = "loki" },
+        { "__address__" = "grafana:3000", "instance" = "grafana" },
+    ]
+    forward_to = [prometheus.remote_write.local_prometheus.receiver]
+}
+
+// SYNOLOGY METRICS
+
+import.file "generic" {
+    filename = "/etc/alloy/modules/generic.alloy"
+}
+
+generic.scrape_metrics "synology_metrics" {
+    targets = [{ "__address__" = "192.168.0.3:9100" }]
+    forward_to = [prometheus.remote_write.local_prometheus.receiver]
+    job_label = "synology-monitoring"
+}
+
+prometheus.remote_write "local_prometheus" {
+    endpoint {
+        url = "http://prometheus:9090/api/v1/write"
+    }
+}
+
+// LOGS
+
+loki.source.docker "container_logs" {
+    host = "unix:///var/run/docker.sock"
+    targets = discovery.docker.docker_containers.targets
+    forward_to = [loki.write.local_loki.receiver]
+}
+
+local.file_match "system_logs" {
+    path_targets = [{ "__path__" = "/var/log/*.log", "job" = "systemlogs" }]
+}
+
+loki.source.file "local_files" {
+    targets = local.file_match.system_logs.targets
+    forward_to = [loki.write.local_loki.receiver]
+}
+
+loki.write "local_loki" {
+    endpoint {
+        url = "http://loki:3100/loki/api/v1/push"
+    }
+}
