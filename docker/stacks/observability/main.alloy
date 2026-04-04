@@ -57,6 +57,8 @@ discovery.relabel "docker_container_relabel" {
     }
 }
 
+// TODO: It looks like Dockge logs are rejected because the container runs with timezone UTC
+
 loki.source.docker "docker_container_logs" {
     host    = "unix:///var/run/docker.sock"
     targets = discovery.relabel.docker_container_relabel.output

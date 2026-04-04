@@ -40,6 +40,9 @@ services:
         url: "http://192.168.0.2:8123/lovelace/default_view"
         target: "_blank"
 
+  # TODO: Add Observability section
+  # TODO: Add ansible playbook to update dashboard -> nice to have
+
   - name: "Files & Media"
     icon: "fas fa-photo-video"
     items:
