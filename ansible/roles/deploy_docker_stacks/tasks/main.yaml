@@ -13,7 +13,7 @@
 
 - name: "{{ docker_state | capitalize }} docker stacks"
   vars:
-    _compose_args: { up: "up -d", down: "down" }
+    _compose_args: { up: "up -d", down: "down", restart: "restart" }
   ansible.builtin.shell: "docker compose {{ _compose_args[docker_state] }}"
   args:
     chdir: "{{ item.path | dirname }}"
