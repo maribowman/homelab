@@ -1,0 +1,21 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb-ha:pg18
+    container_name: ha-timescaledb
+    restart: unless-stopped
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=homeassistant
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=homeassistant
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U homeassistant
+      interval: 10s
+      timeout: 5s
+      retries: 5
+networks: {}
