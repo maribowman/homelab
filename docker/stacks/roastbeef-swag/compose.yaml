@@ -6,6 +6,7 @@ services:
     ports:
       - 8800:8800
     volumes:
+      # TODO: Fix write permissions on VM
       - ./data:/data
     command: prod
 networks: {}
