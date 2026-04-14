@@ -16,6 +16,12 @@ services:
         url: "https://192.168.0.100:8006"
         target: "_blank"
 
+      - name: "Proxmox Backup Server"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/proxmox.png"
+        subtitle: "Backup Server"
+        url: "https://192.168.0.101:8007"
+        target: "_blank"
+
       - name: "TrueNAS"
         logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/truenas.png"
         subtitle: "NAS Storage"
@@ -40,7 +46,18 @@ services:
         url: "http://192.168.0.2:8123/lovelace/default_view"
         target: "_blank"
 
-  # TODO: Add Observability section
+      - name: "Grafana"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/grafana.png"
+        subtitle: "Dashboards"
+        url: "http://192.168.0.68:3000"
+        target: "_blank"
+
+      - name: "Alloy"
+        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/alloy.png"
+        subtitle: "Data Scraping"
+        url: "http://192.168.0.68:12345"
+        target: "_blank"
+
   # TODO: Add ansible playbook to update dashboard -> nice to have
 
   - name: "Files & Media"
