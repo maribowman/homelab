@@ -18,5 +18,7 @@
   args:
     chdir: "{{ item.path | dirname }}"
   loop: "{{ compose_files.files }}"
-  when: (item.path | dirname | basename) != 'dockge'
+  when:
+    - (item.path | dirname | basename) != 'dockge'
+    - target_stack == "" or (item.path | dirname | basename) == target_stack
   ignore_errors: true

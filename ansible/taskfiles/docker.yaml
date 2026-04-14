@@ -8,3 +8,16 @@ tasks:
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
       --vault-password-file "{{.VAULT_PWD_FILE}}"
+
+  restart:
+    desc: "Restart a single docker stack on the docker VM"
+    silent: true
+    deps: [":init"]
+    requires:
+      vars:
+        - name: STACK
+          enum: [observability, roastbeef-swag, ha-timescaledb]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      --extra-vars "target_stack={{.STACK}}"
