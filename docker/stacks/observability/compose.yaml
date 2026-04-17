@@ -85,6 +85,22 @@ services:
       - /dev/disk/:/dev/disk:ro
     command:
       - --housekeeping_interval=30s
+      # Skip walking the full cgroup tree
+      - --docker_only=true
+      # Skip storing container labels
+      - --store_container_labels=false
+      # Disable root cgroup stats, redundant with node-exporter
+      - --disable_root_cgroup_stats=true
+      # Disable expensive or unused metrics
+      # percpu: per-CPU stats per container, O(containers x cores) each interval
+      # perf_event: Linux perf syscalls, very expensive
+      # sched/cpuLoad: reads /proc/sched_debug and load averages
+      # advtcp/tcp/udp: network protocol stats
+      # memory_numa/referenced_memory/resctrl: advanced memory/cache metrics
+      # hugetlb: hugepage stats
+      # process: process count per container
+      # app: app-level resource isolation
+      - --disable_metrics=advtcp,app,cpuLoad,hugetlb,memory_numa,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp
     networks:
       - observability
 
