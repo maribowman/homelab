@@ -7,7 +7,8 @@ tasks:
     deps: [":init"]
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
-      --vault-password-file "{{.VAULT_PWD_FILE}}"
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      --extra-vars "docker_state=up"
 
   restart:
     desc: "Restart a single docker stack on the docker VM"
