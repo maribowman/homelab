@@ -72,13 +72,7 @@ services:
       - name: "Jellyfin"
         logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/jellyfin.png"
         subtitle: "Streaming"
-        url: "http://192.168.0.139:8096"
-        target: "_blank"
-
-      - name: "Syncthing"
-        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/syncthing.png"
-        subtitle: "Sync"
-        url: "http://192.168.0.139:8384"
+        url: "http://192.168.0.3:8096"
         target: "_blank"
 
       - name: "Filebrowser"
@@ -100,18 +94,6 @@ services:
         logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/paperless-ngx.png"
         subtitle: "Document Management"
         url: "http://192.168.0.139:8000"
-        target: "_blank"
-
-      - name: "Actual Budget"
-        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/actual-budget.png"
-        subtitle: "Finance Management"
-        url: "http://192.168.0.139:5006"
-        target: "_blank"
-
-      - name: "Vikunja"
-        logo: "https://raw.githubusercontent.com/walkxcode/dashboard-icons/master/png/vikunja.png"
-        subtitle: "Taskboard"
-        url: "http://192.168.0.139:3456"
         target: "_blank"
 
       - name: "qBittorrent"
