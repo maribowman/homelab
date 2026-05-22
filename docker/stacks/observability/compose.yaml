@@ -27,6 +27,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-remote-write-receiver
+      - --storage.tsdb.out-of-order-time-window=3h
     networks:
       - observability
 
