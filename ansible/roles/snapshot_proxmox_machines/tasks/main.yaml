@@ -8,7 +8,7 @@
     vmid: "{{ vmid }}"
     state: present
     snapname: "pre_update_{{ ansible_facts['date_time']['date'] }}"
-    retention: 2
+    retention: "{{ snapshot_retention }}"
   delegate_to: localhost
   become: false
   # The PVE host has no vmid (it cannot snapshot itself); guests without a vmid

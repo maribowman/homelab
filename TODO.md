@@ -159,7 +159,10 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 
 ## P2 — Cleanup & documentation
 
-### 10. `retention_days: 21` is defined but never used; snapshot retention is hardcoded to 2
+### 10. `retention_days: 21` is defined but never used; snapshot retention is hardcoded to 2 ✅ DONE
+- **Status:** Removed the unused `retention_days` (it was days, semantically unrelated to a snapshot
+  *count*) and added `snapshot_retention: 2`, wired into `snapshot_proxmox_machines` via
+  `retention: "{{ snapshot_retention }}"`. Updated the `CLAUDE.md` inventory-vars reference.
 - **Priority:** P2 · **Impact:** Low (dead config / inconsistency vs. docs)
 - **Where:** `ansible/inventory/group_vars/all/vars.yaml` (line 8),
   `ansible/roles/snapshot_proxmox_machines/tasks/main.yaml` (line 11, `retention: 2`)

@@ -5,5 +5,7 @@ pve_user: "root@pam"
 pve_token_id: "maintenance"
 
 # Misc
-retention_days: 21
 dockge_stacks_path: "/opt/stacks"
+
+# Number of pre-update snapshots to keep per guest (used by snapshot_proxmox_machines)
+snapshot_retention: 2

@@ -27,7 +27,7 @@ task ansible:proxmox:ping           # Test SSH connectivity to all hosts
 
 - Venv lives at `ansible/.venv`; all ansible binaries must be invoked via that venv (the Taskfile handles this automatically).
 - Secrets are stored in `ansible/inventory/group_vars/all/vault.yaml` (Ansible Vault). The vault password file is expected at `ansible/inventory/group_vars/all/.vault.pass` (gitignored, must be provisioned locally).
-- Inventory vars are in `ansible/inventory/group_vars/all/vars.yaml`: Proxmox API details, `dockge_stacks_path` (`/opt/stacks` on DockerVM), `retention_days`.
+- Inventory vars are in `ansible/inventory/group_vars/all/vars.yaml`: Proxmox API details, `dockge_stacks_path` (`/opt/stacks` on DockerVM), `snapshot_retention` (pre-update snapshots kept per guest).
 - Collections used: `community.proxmox`, `community.general`, `ansible.posix`.
 
 ### Ansible Roles
