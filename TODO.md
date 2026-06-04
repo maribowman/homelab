@@ -57,7 +57,13 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
   others, but is surfaced at the end). Optionally assert that `target_stack`, when non-empty,
   matched at least one discovered compose file.
 
-### 4. Grafana exposed with no admin password + anonymous access + embedding enabled
+### 4. Grafana exposed with no admin password + anonymous access + embedding enabled ✅ DONE
+- **Status:** Fixed the takeover risk — added `GF_SECURITY_ADMIN_PASSWORD` (sourced from
+  `docker/stacks/observability/.env`, with a `:?` guard so deploy fails loudly if it's unset) plus a
+  tracked `.env.example`. Anonymous Viewer and embedding are intentionally kept (embedding is used by
+  Home Assistant; Homer links to Grafana directly over LAN), and the `3000` bind is left as-is for
+  the same reason. **Manual step:** set a strong `GF_SECURITY_ADMIN_PASSWORD` in the VM's `.env`
+  before the next deploy.
 - **Priority:** P0 · **Impact:** High (security)
 - **Where:** `docker/stacks/observability/compose.yaml` (grafana service, lines 2-15)
 - **Problem:** No `GF_SECURITY_ADMIN_PASSWORD` is set, so the admin account is the default
