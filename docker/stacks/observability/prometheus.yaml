@@ -1,4 +1,8 @@
 global:
   scrape_interval: 15s
 
+storage:
+  tsdb:
+    out_of_order_time_window: 3h
+
 scrape_configs: []

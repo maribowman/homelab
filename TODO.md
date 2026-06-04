@@ -93,7 +93,10 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 
 ## P1 — Reliability & maintainability
 
-### 6. Commit the pending Prometheus out-of-order config change
+### 6. Commit the pending Prometheus out-of-order config change ✅ DONE
+- **Status:** Committed — removed the invalid `--storage.tsdb.out-of-order-time-window=3h` CLI flag
+  and moved it to `prometheus.yaml` under `storage.tsdb.out_of_order_time_window: 3h`. Validated
+  locally with `promtool check config` (SUCCESS).
 - **Priority:** P1 · **Impact:** Medium (uncommitted working state; the prior config likely broke startup)
 - **Where:** working tree diff on `docker/stacks/observability/compose.yaml` + `prometheus.yaml`
 - **Problem:** The change removes `--storage.tsdb.out-of-order-time-window=3h` from the Prometheus
