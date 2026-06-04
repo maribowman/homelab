@@ -30,6 +30,9 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-remote-write-receiver
+      # Explicit retention (default is 15d). Aligned with Loki's 30d window.
+      # Add --storage.tsdb.retention.size=<N>GB once the disk budget is known.
+      - --storage.tsdb.retention.time=30d
     networks:
       - observability
 

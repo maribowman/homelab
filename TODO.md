@@ -213,7 +213,10 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
   fix the Dockge container clock; old replays on Alloy restart → ensure read-position persistence;
   genuine parsing → add a `loki.process` with `stage.timestamp`. Confirm Dockge logs appear after.
 
-### 14. Prometheus has no explicit retention/size limit
+### 14. Prometheus has no explicit retention/size limit ✅ DONE
+- **Status:** Set `--storage.tsdb.retention.time=30d` (was the implicit 15d default), aligned with
+  Loki's 30d window. A size cap (`--storage.tsdb.retention.size`) is left as an optional follow-up
+  since it depends on the DockerVM disk budget — noted inline in the compose command.
 - **Priority:** P2 · **Impact:** Low/Medium (relies on the 15d default; disk usage not bounded by size)
 - **Where:** `docker/stacks/observability/compose.yaml` (prometheus command, lines 26-29)
 - **Problem:** No `--storage.tsdb.retention.time` or `--storage.tsdb.retention.size` is set, so the
