@@ -11,14 +11,39 @@
     recurse: true
   register: compose_files
 
+- name: Select target stack directories
+  vars:
+    _select_pattern: "{{ '.*' if target_stack == '' else '.*/' ~ target_stack ~ '$' }}"
+  ansible.builtin.set_fact:
+    _stack_dirs: >-
+      {{ compose_files.files
+         | map(attribute='path')
+         | map('dirname')
+         | reject('match', '.*/dockge$')
+         | select('match', _select_pattern)
+         | unique
+         | list }}
+
+- name: Ensure the requested stack exists
+  ansible.builtin.assert:
+    that: _stack_dirs | length > 0
+    fail_msg: "No stack matched target_stack='{{ target_stack }}' under {{ dockge_stacks_path }}"
+  when: target_stack != ""
+
 - name: "{{ docker_state | capitalize }} docker stacks"
   vars:
     _compose_args: { up: "up -d", down: "down", restart: "restart" }
   ansible.builtin.shell: "docker compose {{ _compose_args[docker_state] }}"
   args:
-    chdir: "{{ item.path | dirname }}"
-  loop: "{{ compose_files.files }}"
-  when:
-    - (item.path | dirname | basename) != 'dockge'
-    - target_stack == "" or (item.path | dirname | basename) == target_stack
-  ignore_errors: true
+    chdir: "{{ item }}"
+  loop: "{{ _stack_dirs }}"
+  register: _compose_results
+  # Don't abort on the first bad stack — attempt them all, then fail at the end.
+  failed_when: false
+
+- name: Fail if any stack failed to "{{ docker_state }}"
+  vars:
+    _failed: "{{ _compose_results.results | selectattr('rc', 'ne', 0) | map(attribute='item') | list }}"
+  ansible.builtin.fail:
+    msg: "Stacks failed to {{ docker_state }}: {{ _failed | join(', ') }}"
+  when: _failed | length > 0

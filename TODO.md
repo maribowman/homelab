@@ -42,7 +42,11 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
   matching list in `CLAUDE.md`. Consider failing the play if `target_stack` matches no directory
   (see item 3).
 
-### 3. `deploy_docker_stacks` uses `ignore_errors: true` — failed deploys report success
+### 3. `deploy_docker_stacks` uses `ignore_errors: true` — failed deploys report success ✅ DONE
+- **Status:** Fixed — replaced blanket `ignore_errors` with `failed_when: false` on the per-stack
+  loop (so all stacks are still attempted) plus a final `fail` task that aborts the play and lists
+  any stacks whose `docker compose` returned non-zero. Also added an `assert` that a non-empty
+  `target_stack` matched at least one discovered stack (the safety net deferred from item 2).
 - **Priority:** P0 · **Impact:** High (a stack that fails to come up looks like a successful deploy)
 - **Where:** `ansible/roles/deploy_docker_stacks/tasks/main.yaml` (line 24)
 - **Problem:** `ignore_errors: true` on the `docker compose` loop swallows all failures. A broken
