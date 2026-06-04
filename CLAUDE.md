@@ -13,7 +13,7 @@ All commands use `task` (Taskfile runner). Dependencies are bootstrapped automat
 ```sh
 # Docker
 task ansible:docker:deploy          # Rsync stacks to DockerVM and bring all stacks up
-task ansible:docker:restart STACK=observability  # Restart a single stack (observability | roastbeef-swag | ha-timescaledb)
+task ansible:docker:restart STACK=observability  # Restart a single stack (observability | roastbeef-swag | timescaledb)
 
 # Proxmox
 task ansible:proxmox:update         # Snapshot all VMs, apt upgrade, reboot if needed

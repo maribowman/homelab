@@ -17,7 +17,7 @@ tasks:
     requires:
       vars:
         - name: STACK
-          enum: [observability, roastbeef-swag, ha-timescaledb]
+          enum: [observability, roastbeef-swag, timescaledb]
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
       --vault-password-file "{{.VAULT_PWD_FILE}}" \

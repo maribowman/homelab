@@ -27,7 +27,10 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
     overrides.
   - Verify after deploy that old chunks under `loki-data` are pruned.
 
-### 2. `task ansible:docker:restart STACK=...` enum is wrong — `timescaledb` cannot be restarted
+### 2. `task ansible:docker:restart STACK=...` enum is wrong — `timescaledb` cannot be restarted ✅ DONE
+- **Status:** Fixed — enum changed to `[observability, roastbeef-swag, timescaledb]` in
+  `ansible/taskfiles/docker.yaml` and the matching list updated in `CLAUDE.md`. (Asserting that
+  `target_stack` matches a real stack is tracked under item 3.)
 - **Priority:** P0 · **Impact:** High (documented command silently does nothing / rejects valid input)
 - **Where:** `ansible/taskfiles/docker.yaml` (line 20 enum), echoed in `CLAUDE.md`
 - **Problem:** The enum is `[observability, roastbeef-swag, ha-timescaledb]`, but the actual stack
