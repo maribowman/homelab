@@ -16,7 +16,7 @@ task ansible:docker:deploy          # Rsync stacks to DockerVM and bring all sta
 task ansible:docker:restart STACK=observability  # Restart a single stack (observability | roastbeef-swag | timescaledb)
 
 # Proxmox
-task ansible:proxmox:update         # Snapshot all VMs, apt upgrade, reboot if needed
+task ansible:proxmox:update         # Snapshot guests (by vmid), apt upgrade + reboot guests, then patch/reboot the PVE host last
 task ansible:proxmox:syntax         # Syntax-check the proxmox playbook
 task ansible:proxmox:ping           # Test SSH connectivity to all hosts
 ```

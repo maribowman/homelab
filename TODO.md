@@ -135,7 +135,16 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 - **Fix:** Rename to `stdout_callback = yaml`. Confirm the `ansible.posix`/`community.general`
   collection providing the YAML callback is installed (it is, via requirements).
 
-### 9. The Proxmox host (`pve`) and PBS LXC are not in inventory — `proxmox:update` never updates them
+### 9. The Proxmox host (`pve`) and PBS LXC are not in inventory — `proxmox:update` never updates them ✅ DONE
+- **Status:** Added both to inventory. `pve` is in a new `[pve_hosts]` group; `lxc-pbs`
+  (192.168.0.101) in `[debian_nodes]`. The snapshot role now runs only `when: vmid is defined`, so
+  the hypervisor (no vmid, can't snapshot itself) is skipped for snapshots but still patched. The
+  playbook was split into two plays so guests are snapshotted/patched/restored first and the **PVE
+  host is patched + rebooted last**. Syntax-checked; inventory graph verified.
+- **⚠️ Follow-ups:** (1) **Set the real PBS vmid** — `lxc-pbs` currently has no `vmid`, so it is
+  patched but *not* snapshotted until you add `vmid=<id>` (run `pct list` on the PVE host). (2)
+  Auto-rebooting the hypervisor stops running guests ungracefully; consider gracefully shutting down
+  guests before the PVE reboot, or schedule the PVE reboot separately.
 - **Priority:** P1 · **Impact:** Medium (the actual hypervisor + backup server miss automated patching)
 - **Where:** `ansible/inventory/hosts.ini`, `ansible/playbooks/proxmox.yaml`
 - **Problem:** Inventory only contains `vm-docker` (192.168.0.69) and `lxc-tailscale`

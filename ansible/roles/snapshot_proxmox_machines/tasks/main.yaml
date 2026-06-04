@@ -11,3 +11,6 @@
     retention: 2
   delegate_to: localhost
   become: false
+  # The PVE host has no vmid (it cannot snapshot itself); guests without a vmid
+  # set in inventory are skipped rather than failing the run.
+  when: vmid is defined

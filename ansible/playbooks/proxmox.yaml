@@ -1,6 +1,6 @@
 ---
-- name: System maintenance
-  hosts: all
+- name: System maintenance — guests
+  hosts: all:!pve_hosts
   become: true
 
   roles:
@@ -14,3 +14,13 @@
       vars:
         docker_state: "up"
       when: inventory_hostname in groups['docker_hosts']
+
+# The hypervisor is patched and rebooted LAST: it has no vmid (cannot snapshot
+# itself) and rebooting it takes down every guest, so it must run after the
+# guests are updated and back up.
+- name: System maintenance — Proxmox hypervisor
+  hosts: pve_hosts
+  become: true
+
+  roles:
+    - role: update_proxmox_machines
