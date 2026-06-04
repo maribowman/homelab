@@ -5,6 +5,16 @@ Sorted by **priority × impact** (highest first). Each item notes where to look,
 matters, and a suggested fix.
 
 Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Medium / Low.
+Status markers: ✅ DONE · ⏸️ DEFERRED/ACCEPTED · (unmarked = open).
+
+## Progress
+
+- **Done:** #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #14, #15
+- **Deferred / accepted:** #12 (sync `--delete` — needs model decision), #13 (Alloy Dockge logs —
+  needs live diagnosis), #16 (roastbeef data perms — needs runtime info), #17 (host key checking —
+  accepted LAN tradeoff), #18 (Homer stack — nice-to-have)
+- **Open follow-ups noted inline:** set the real PBS `vmid` (#9), optional Prometheus size cap (#14),
+  Renovate/Dependabot for pinned images (#7), Vault-templating the `.env` secrets (#4/#11).
 
 ---
 
@@ -263,7 +273,9 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 - **Fix (if revisited):** `ssh-keyscan` the hosts into a managed `known_hosts`, then set
   `host_key_checking = True` for a small MITM-hardening win.
 
-### 18. Homer dashboard has no automated deploy (existing TODO)
+### 18. Homer dashboard has no automated deploy (existing TODO) ⏸️ DEFERRED
+- **Status:** Deferred by decision — building a Homer stack adds a new running container and moves the
+  config; left as a nice-to-have for now.
 - **Priority:** P3 · **Impact:** Low
 - **Where:** `homer/config.yml` (line 61 TODO)
 - **Problem:** Existing "nice to have" TODO to add an Ansible playbook to deploy/update the Homer
