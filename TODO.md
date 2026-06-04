@@ -242,17 +242,26 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 
 ## P3 — Minor / nice-to-have
 
-### 16. roastbeef-swag data volume write-permission TODO
+### 16. roastbeef-swag data volume write-permission TODO ⏸️ DEFERRED (needs runtime info)
 - **Priority:** P3 · **Impact:** Low
 - **Where:** `docker/stacks/roastbeef-swag/compose.yaml` (line 9 TODO)
-- **Problem:** Existing TODO: "Fix write permissions on VM" for the `./data` bind mount.
-- **Fix:** Set a matching `user:`/ownership for the data dir, or switch to a named volume.
+- **Problem:** Existing TODO: "Fix write permissions on VM" for the `./data` bind mount — the
+  container's user can't write to the root-owned host dir.
+- **Status:** Can't be fixed safely from the repo alone: the right fix depends on the image's runtime
+  UID (the ghcr image isn't anonymously inspectable), and guessing a `user:` could break the bot.
+- **Options (pick on the VM):** (a) `chown` the host `./data` to the container's UID
+  (`docker inspect ghcr.io/maribowman/roastbeef-swag:latest --format '{{.Config.User}}'`, then
+  `chown -R <uid> data`); (b) add a matching `user:` to the service; (c) switch to a named volume
+  (Docker seeds ownership from the image) — note existing `./data` contents would need migrating.
 
-### 17. `host_key_checking = False` in `ansible.cfg`
+### 17. `host_key_checking = False` in `ansible.cfg` ⏸️ ACCEPTED (deliberate tradeoff)
 - **Priority:** P3 · **Impact:** Low (acceptable for a LAN homelab, but disables host-key verification)
 - **Where:** `ansible/ansible.cfg` (line 4)
-- **Fix:** Optionally pre-populate `known_hosts` and re-enable host key checking for a small
-  security/MITM hardening win.
+- **Status:** Left as-is by decision. Re-enabling safely requires pre-seeding `known_hosts`
+  (`ssh-keyscan` of each host) first; flipping it without that breaks all automation. Accepted for a
+  trusted LAN homelab.
+- **Fix (if revisited):** `ssh-keyscan` the hosts into a managed `known_hosts`, then set
+  `host_key_checking = True` for a small MITM-hardening win.
 
 ### 18. Homer dashboard has no automated deploy (existing TODO)
 - **Priority:** P3 · **Impact:** Low
