@@ -1,6 +1,6 @@
 services:
   grafana:
-    image: grafana/grafana-oss:latest
+    image: grafana/grafana-oss:13.0.2
     container_name: grafana
     restart: unless-stopped
     ports:
@@ -16,7 +16,7 @@ services:
       - observability
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3
     container_name: prometheus
     restart: unless-stopped
     ports:
@@ -34,7 +34,7 @@ services:
       - observability
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3
     container_name: loki
     restart: unless-stopped
     ports:
@@ -47,7 +47,7 @@ services:
       - observability
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.16.2
     container_name: alloy
     restart: unless-stopped
     depends_on:
@@ -65,7 +65,7 @@ services:
       - observability
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1
     container_name: node-exporter
     restart: unless-stopped
     volumes:
@@ -81,7 +81,7 @@ services:
       - observability
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     container_name: cadvisor
     restart: unless-stopped
     volumes:

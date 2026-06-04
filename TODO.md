@@ -106,7 +106,14 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 - **Fix:** Verify Prometheus starts cleanly with the new config, then commit the change with a
   message explaining the flag→config migration.
 
-### 7. Docker images all pin to `:latest`
+### 7. Docker images all pin to `:latest` ✅ DONE (observability)
+- **Status:** Pinned the observability stack to stop surprise **major** upgrades, preferring floating
+  major tags where the registry publishes them (matching the `dockge:1` / `timescaledb:pg18`
+  pattern): `prometheus:v3`, `loki:3`, `node-exporter:v1`. Grafana and Alloy don't publish bare-major
+  tags, so they're pinned to current concretes (`grafana-oss:13.0.2`, `alloy:v1.16.2`); cAdvisor (0.x,
+  no major line) pinned to `v0.55.1` (== latest). **Left as `:latest`:** `roastbeef-swag` — it's the
+  user's own continuously-deployed bot with no enumerable version tags; pin it later if desired.
+  Follow-up: consider Renovate/Dependabot to bump the concrete pins.
 - **Priority:** P1 · **Impact:** Medium (non-reproducible deploys; surprise breaking upgrades on every `up`)
 - **Where:** `docker/stacks/observability/compose.yaml` (grafana, prometheus, loki, alloy,
   node-exporter, cadvisor), `docker/stacks/roastbeef-swag/compose.yaml`
