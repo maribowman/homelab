@@ -123,7 +123,11 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
   Dependabot or a periodic manual bump to control upgrades. (Dockge already pins `:1`,
   TimescaleDB pins `pg18` — follow that pattern.)
 
-### 8. `ansible.cfg` has a typo: `std_callback` should be `stdout_callback`
+### 8. `ansible.cfg` has a typo: `std_callback` should be `stdout_callback` ✅ DONE
+- **Status:** Fixed — but the suggested `stdout_callback = yaml` would **not** have worked: the `yaml`
+  stdout callback was removed from `community.general` (v12.0.0; installed is 12.5.0) and superseded
+  by the `default` callback's `result_format=yaml` option. Set `callback_result_format = yaml` in
+  `[defaults]` instead. Verified output now renders as YAML (`ansible -m debug` shows block scalars).
 - **Priority:** P1 · **Impact:** Medium (intended YAML output formatting is silently not applied)
 - **Where:** `ansible/ansible.cfg` (line 5)
 - **Problem:** `std_callback = yaml` is not a valid `[defaults]` key, so it is ignored and playbook
