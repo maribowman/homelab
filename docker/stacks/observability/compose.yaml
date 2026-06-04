@@ -83,34 +83,17 @@ services:
     networks:
       - observability
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.55.1
-    container_name: cadvisor
+  # Lightweight per-container metrics exporter (CPU, memory, disk I/O, network),
+  # scraped by Alloy on :9333. Replaces cAdvisor, which used ~10x the RAM and
+  # ~15-20x the CPU. Trade-off: no per-container disk *usage* (filesystem size),
+  # which is essentially a cAdvisor-only metric.
+  # Upstream only publishes the `latest` tag, so it can't be pinned like the rest.
+  logporter:
+    image: lifailon/logporter:latest
+    container_name: logporter
     restart: unless-stopped
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    command:
-      - --housekeeping_interval=30s
-      # Skip walking the full cgroup tree
-      - --docker_only=true
-      # Skip storing container labels
-      - --store_container_labels=false
-      # Disable root cgroup stats, redundant with node-exporter
-      - --disable_root_cgroup_stats=true
-      # Disable expensive or unused metrics
-      # percpu: per-CPU stats per container, O(containers x cores) each interval
-      # perf_event: Linux perf syscalls, very expensive
-      # sched/cpuLoad: reads /proc/sched_debug and load averages
-      # advtcp/tcp/udp: network protocol stats
-      # memory_numa/referenced_memory/resctrl: advanced memory/cache metrics
-      # hugetlb: hugepage stats
-      # process: process count per container
-      # app: app-level resource isolation
-      - --disable_metrics=advtcp,app,cpuLoad,hugetlb,memory_numa,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - observability
 

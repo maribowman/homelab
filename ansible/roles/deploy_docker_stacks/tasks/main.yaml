@@ -32,7 +32,9 @@
 
 - name: "{{ docker_state | capitalize }} docker stacks"
   vars:
-    _compose_args: { up: "up -d", down: "down", restart: "restart" }
+    # --remove-orphans drops containers no longer defined in a compose file
+    # (e.g. a service removed from compose.yaml) instead of leaving them running.
+    _compose_args: { up: "up -d --remove-orphans", down: "down", restart: "restart" }
   ansible.builtin.shell: "docker compose {{ _compose_args[docker_state] }}"
   args:
     chdir: "{{ item }}"

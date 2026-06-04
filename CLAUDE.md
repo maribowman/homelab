@@ -35,7 +35,7 @@ task ansible:proxmox:ping           # Test SSH connectivity to all hosts
 | Role | What it does |
 |------|-------------|
 | `sync_docker_stacks` | Bidirectional rsync between `docker/stacks/` (local) and `/opt/stacks` (DockerVM). Push excludes `data/`; pull excludes `dockge/`. |
-| `deploy_docker_stacks` | Finds all compose files under `dockge_stacks_path`, runs `docker compose <up -d \| down \| restart>` per stack. Skips the `dockge` stack itself. Controlled by `docker_state` (default: `restart`) and `target_stack` (default: `""` = all stacks). |
+| `deploy_docker_stacks` | Finds all compose files under `dockge_stacks_path`, runs `docker compose <up -d --remove-orphans \| down \| restart>` per stack (so a service removed from a compose file is pruned on deploy). Skips the `dockge` stack itself. Controlled by `docker_state` (default: `restart`) and `target_stack` (default: `""` = all stacks). |
 | `snapshot_proxmox_machines` | Creates a pre-update snapshot via Proxmox API (`proxmox_snap`), retains last 2. |
 | `update_proxmox_machines` | `apt dist-upgrade`, reboots if `/var/run/reboot-required` exists. |
 
@@ -44,11 +44,11 @@ task ansible:proxmox:ping           # Test SSH connectivity to all hosts
 Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `sync_docker_stacks`. [Dockge](https://github.com/louislam/dockge) (at `docker/dockge/`) manages them on the VM side but is not itself a synced stack.
 
 **observability** — Full metrics + logs pipeline:
-- **Grafana** (`:3000`) — dashboards; anonymous viewer access enabled; embedding allowed.
+- **Grafana** (`:3000`) — dashboards; anonymous viewer access enabled; embedding allowed. Requires a gitignored `.env` with `GF_SECURITY_ADMIN_PASSWORD` (see `.env.example`); `sync_docker_stacks` rsyncs it to the DockerVM, so keep the local `.env` populated or it will overwrite the remote one.
 - **Prometheus** (`:9090`) — metrics storage with remote-write receiver enabled. `prometheus.yaml` has `scrape_configs: []` — all scraping is done via Alloy.
 - **Loki** (`:3100`) — log storage.
-- **Alloy** (`:12345`) — collects metrics from node-exporter, cAdvisor, and all observability containers; scrapes the Synology NAS node-exporter (192.168.0.3:9100); tails all Docker container logs and system logs (`/var/log/*.log`); forwards everything to local Prometheus/Loki. Alloy config is modular: `main.alloy` imports `modules/observability.alloy` and `modules/generic.alloy`.
-- **node-exporter** + **cAdvisor** — host and container metrics. cAdvisor has several expensive metric collectors disabled.
+- **Alloy** (`:12345`) — collects metrics from node-exporter, Logporter, and all observability containers; scrapes the Synology NAS node-exporter (192.168.0.3:9100); tails all Docker container logs and system logs (`/var/log/*.log`); forwards everything to local Prometheus/Loki. Alloy config is modular: `main.alloy` imports `modules/observability.alloy` and `modules/generic.alloy`.
+- **node-exporter** + **Logporter** (`:9333`) — host and per-container metrics. Logporter (`lifailon/logporter`) is a lightweight Docker-stats exporter (CPU, memory, disk I/O, network) scraped by Alloy under the `docker-containers` job; it replaced cAdvisor to cut CPU/RAM at the cost of per-container disk *usage*.
 
 **roastbeef-swag** — Personal Discord bot (`ghcr.io/maribowman/roastbeef-swag`), port 8800, data persisted in `./data`.
 
