@@ -74,7 +74,11 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
   Viewer if desired, but ensure the admin password is strong. Consider restricting the port bind
   if Grafana is only consumed via Tailscale/reverse proxy.
 
-### 5. Database and metrics ports bound to all interfaces (LAN-exposed)
+### 5. Database and metrics ports bound to all interfaces (LAN-exposed) ✅ DONE (documented & accepted)
+- **Status:** Reviewed and accepted as-is for this trusted LAN-only homelab — restricting the binds
+  would break Home Assistant's TimescaleDB connection and the remote-write flow. The exposure
+  decision is now documented inline at both ports (`docker/stacks/timescaledb/compose.yaml`,
+  `docker/stacks/observability/compose.yaml`). Revisit if the host is ever exposed beyond the LAN.
 - **Priority:** P0 · **Impact:** High (security)
 - **Where:** `docker/stacks/timescaledb/compose.yaml` (`5432:5432`),
   `docker/stacks/observability/compose.yaml` (`9090:9090` with `--web.enable-remote-write-receiver`)

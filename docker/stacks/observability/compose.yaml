@@ -20,6 +20,8 @@ services:
     container_name: prometheus
     restart: unless-stopped
     ports:
+      # Bound to all interfaces on purpose, with the remote-write receiver enabled
+      # below. Accepted exposure for a trusted LAN-only homelab. See TODO.md #5.
       - 9090:9090
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro

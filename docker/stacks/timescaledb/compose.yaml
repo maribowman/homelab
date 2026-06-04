@@ -4,6 +4,8 @@ services:
     container_name: timescaledb
     restart: unless-stopped
     ports:
+      # Bound to all interfaces on purpose: Home Assistant (192.168.0.2) connects
+      # over the LAN. Accepted exposure for a trusted LAN-only homelab. See TODO.md #5.
       - 5432:5432
     environment:
       - POSTGRES_USER=admin
