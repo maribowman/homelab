@@ -185,7 +185,9 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 - **Fix:** Add a `timescaledb/.env.example`, document the step in README/CLAUDE.md, or template the
   `.env` from Vault during deploy so secret handling is consistent.
 
-### 12. `sync_docker_stacks` rsync has no `--delete`; deletions never propagate (and pull re-adds them)
+### 12. `sync_docker_stacks` rsync has no `--delete`; deletions never propagate (and pull re-adds them) ⏸️ DEFERRED
+- **Status:** Deferred by decision — pending a choice on the sync model (repo-as-source-of-truth with
+  `--delete` vs. documented bidirectional). `--delete` carries data-loss risk, so left untouched.
 - **Priority:** P2 · **Impact:** Medium (removing a stack locally leaves it running on the VM)
 - **Where:** `ansible/roles/sync_docker_stacks/tasks/main.yaml`
 - **Problem:** The push (local→VM) has no `--delete`, so a stack deleted from the repo stays on the
@@ -195,14 +197,21 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
   on push (carefully, with the existing `data` exclusion). If the bidirectional sync is intentional,
   document the deletion procedure.
 
-### 13. Alloy: Dockge container logs are rejected (UTC timezone) — known TODO
+### 13. Alloy: Dockge container logs are rejected (UTC timezone) — known TODO ⏸️ DEFERRED (needs live diagnosis)
 - **Priority:** P2 · **Impact:** Low/Medium (a service's logs are missing from Loki)
 - **Where:** `docker/stacks/observability/main.alloy` (line 60 TODO)
-- **Problem:** Dockge logs are rejected, suspected to be because the container runs in UTC, tripping
-  Loki's `reject_old_samples` / timestamp handling.
-- **Fix:** Investigate timestamp parsing in the `loki.source.docker` pipeline (add a
-  `stage.timestamp`/relabel to normalize), or align the container timezone. Confirm Dockge logs
-  appear in Loki afterward.
+- **Status:** Can't be fixed from the repo alone — `loki.source.docker` already assigns timestamps
+  from the Docker API (UTC), and the "UTC" note in the code is an unconfirmed guess. The actual
+  rejection reason must be read from the running stack first.
+- **Diagnostic steps (run on the DockerVM):**
+  1. `docker logs alloy 2>&1 | grep -i 'dockge\|reject\|error'` — find the rejection reason.
+  2. `docker logs loki 2>&1 | grep -i 'too far\|out of order\|reject'` — Loki's side: "entry too far
+     behind" (older than `reject_old_samples_max_age` 168h) vs "too far in the future"
+     (`creation_grace_period`, default 10m) vs out-of-order.
+  3. In Grafana/Loki, query `{container_name="dockge"}` to confirm whether *any* lines land.
+- **Likely fixes by cause:** future timestamps → add/raise `limits_config.creation_grace_period`, or
+  fix the Dockge container clock; old replays on Alloy restart → ensure read-position persistence;
+  genuine parsing → add a `loki.process` with `stage.timestamp`. Confirm Dockge logs appear after.
 
 ### 14. Prometheus has no explicit retention/size limit
 - **Priority:** P2 · **Impact:** Low/Medium (relies on the 15d default; disk usage not bounded by size)
