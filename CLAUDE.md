@@ -52,4 +52,4 @@ Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `s
 
 **roastbeef-swag** — Personal Discord bot (`ghcr.io/maribowman/roastbeef-swag`), port 8800, data persisted in `./data`.
 
-**timescaledb** — TimescaleDB instance (config in `docker/stacks/timescaledb/`).
+**timescaledb** — TimescaleDB instance (config in `docker/stacks/timescaledb/`). Requires a gitignored `.env` with `POSTGRES_PASSWORD` (see `.env.example`); the stack refuses to start without it.

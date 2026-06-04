@@ -171,7 +171,11 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 - **Fix:** Either wire `retention_days` (or a dedicated `snapshot_retention`) into the snapshot role
   and remove the magic number, or delete the unused var and correct `CLAUDE.md`.
 
-### 11. TimescaleDB requires a manual `.env` (`POSTGRES_PASSWORD`) with no documentation or example
+### 11. TimescaleDB requires a manual `.env` (`POSTGRES_PASSWORD`) with no documentation or example ✅ DONE
+- **Status:** Added a tracked `docker/stacks/timescaledb/.env.example`, a `:?` guard on
+  `POSTGRES_PASSWORD` so the stack fails loudly when unset (matching the Grafana fix in #4), and a
+  note in `CLAUDE.md`. Vault-templating the secret for full consistency is left as an optional
+  follow-up.
 - **Priority:** P2 · **Impact:** Medium (undocumented manual step; fresh deploy fails or starts with empty password)
 - **Where:** `docker/stacks/timescaledb/compose.yaml` (line 10), `.gitignore` (`**/.env`)
 - **Problem:** `POSTGRES_PASSWORD=${POSTGRES_PASSWORD}` reads from a `.env` that is gitignored and
