@@ -225,7 +225,11 @@ Legend — Priority: `P0` (do first) → `P3` (nice to have). Impact: High / Med
 - **Fix:** Set explicit `--storage.tsdb.retention.time` and/or `--storage.tsdb.retention.size` to
   match the disk budget.
 
-### 15. README is incomplete / drifting from actual setup
+### 15. README is incomplete / drifting from actual setup ✅ DONE
+- **Status:** README now documents the TimescaleDB stack, the `docker:restart` command, the required
+  Grafana/TimescaleDB `.env` files, a Backups section linking `proxmox-backup-server-setup.md`, and
+  the updated `proxmox:update` behavior (PVE host patched/rebooted last). Full Homer/CLAUDE.md host
+  reconciliation left as a minor follow-up.
 - **Priority:** P2 · **Impact:** Low
 - **Where:** `README.md`
 - **Problem:** README omits the `timescaledb` stack, the `ansible:docker:restart` command, and the
