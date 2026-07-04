@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Group the observability stack images into one PR",
+      "matchFileNames": ["docker/stacks/observability/compose.yaml"],
+      "groupName": "observability stack"
+    },
+    {
+      "description": "timescaledb-ha uses pgNN tags — track the pg major line",
+      "matchPackageNames": ["timescale/timescaledb-ha"],
+      "versioning": "regex:^pg(?<major>\\d+)(?:-ts(?<minor>\\d+)\\.(?<patch>\\d+))?$"
+    }
+  ]
+}

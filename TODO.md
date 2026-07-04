@@ -14,7 +14,9 @@ Status markers: ✅ DONE · ⏸️ DEFERRED/ACCEPTED · (unmarked = open).
   needs live diagnosis), #16 (roastbeef data perms — needs runtime info), #17 (host key checking —
   accepted LAN tradeoff), #18 (Homer stack — nice-to-have)
 - **Open follow-ups noted inline:** set the real PBS `vmid` (#9), optional Prometheus size cap (#14),
-  Renovate/Dependabot for pinned images (#7), Vault-templating the `.env` secrets (#4/#11).
+  Vault-templating the `.env` secrets (#4/#11).
+- **Renovate added (#7 follow-up):** `renovate.json` at the repo root now opens PR-only image-update
+  PRs — **manual step: install the Renovate GitHub App** on the repo for it to run.
 
 ---
 
@@ -123,7 +125,9 @@ Status markers: ✅ DONE · ⏸️ DEFERRED/ACCEPTED · (unmarked = open).
   tags, so they're pinned to current concretes (`grafana-oss:13.0.2`, `alloy:v1.16.2`); cAdvisor (0.x,
   no major line) pinned to `v0.55.1` (== latest). **Left as `:latest`:** `roastbeef-swag` — it's the
   user's own continuously-deployed bot with no enumerable version tags; pin it later if desired.
-  Follow-up: consider Renovate/Dependabot to bump the concrete pins.
+  Follow-up: **DONE** — added `renovate.json` (root) so Renovate opens PR-only image-update PRs for
+  the pinned tags (grouped observability stack, custom `pgNN` versioning for timescaledb-ha, the two
+  `:latest` images left untracked). **Manual step:** install the Renovate GitHub App on the repo.
 - **Priority:** P1 · **Impact:** Medium (non-reproducible deploys; surprise breaking upgrades on every `up`)
 - **Where:** `docker/stacks/observability/compose.yaml` (grafana, prometheus, loki, alloy,
   node-exporter, cadvisor), `docker/stacks/roastbeef-swag/compose.yaml`

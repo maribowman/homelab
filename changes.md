@@ -19,6 +19,9 @@ actions you must take on the live infrastructure for a change to take effect saf
 4. **Be aware `proxmox:update` now patches and reboots the PVE hypervisor (last).**
    Rebooting the host takes down every guest. Review before running; consider gracefully
    stopping guests first.
+5. **Install the Renovate GitHub App** on `maribowman/homelab` so the committed
+   `renovate.json` takes effect: https://github.com/apps/renovate → Configure → grant the
+   repo access. The first run creates a **Dependency Dashboard** issue and opens update PRs.
 
 ---
 
@@ -88,6 +91,19 @@ actions you must take on the live infrastructure for a change to take effect saf
 - Replaced the unused `retention_days: 21` with `snapshot_retention: 2`, wired into the
   snapshot role (was hardcoded `2`). Updated `CLAUDE.md`.
 
+## Dependency automation
+
+### Renovate (image update PRs) — #7 follow-up
+- Added `renovate.json` at the repo root (`config:recommended`, PR-only — no automerge).
+  Renovate's docker-compose manager tracks the now-pinned image tags across
+  `docker/stacks/*/compose.yaml` and `docker/dockge/compose.yaml`, opening a review PR when a
+  newer version is available (weekly Monday schedule, `prConcurrentLimit: 5`).
+- Observability-stack images are grouped into one PR; `timescale/timescaledb-ha` gets a custom
+  `regex` versioning rule so its `pgNN` tags are parsed. The two `:latest` images (`logporter`,
+  `roastbeef-swag`) are intentionally left untracked (no digest pinning).
+- Requires the Renovate GitHub App (see manual step 5). Validate locally with
+  `npx --yes --package renovate -- renovate-config-validator renovate.json`.
+
 ## Documentation
 - `README.md`: added the TimescaleDB stack, the `docker:restart` command, the required
   `.env` files, a Backups section linking `proxmox-backup-server-setup.md`, and the
@@ -110,7 +126,6 @@ actions you must take on the live infrastructure for a change to take effect saf
 | 18 | Homer auto-deploy | Nice-to-have; would add a new container and move config. |
 
 ## Optional follow-ups (noted inline in TODO)
-- Renovate/Dependabot to bump the now-pinned image tags (#7).
 - Prometheus `--storage.tsdb.retention.size` cap once the disk budget is known (#14).
 - Vault-template the `.env` secrets for consistent secret handling (#4/#11).
 
