@@ -1,0 +1,29 @@
+---
+# The agent can only start once the VM has `agent: 1` set in PVE (which adds the
+# virtio-serial port and needs a VM restart). Until then the package is installed and
+# a warning is printed instead of failing the play.
+- name: Install qemu-guest-agent
+  ansible.builtin.apt:
+    name: qemu-guest-agent
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check for the guest agent virtio port
+  ansible.builtin.stat:
+    path: "{{ qemu_guest_agent_port }}"
+  register: qemu_guest_agent_port_stat
+
+# The unit is static (started by udev when the port appears), so it is not enabled here
+- name: Start qemu-guest-agent
+  ansible.builtin.systemd_service:
+    name: qemu-guest-agent
+    state: started
+  when: qemu_guest_agent_port_stat.stat.exists
+
+- name: Warn when the VM has no guest agent port
+  ansible.builtin.debug:
+    msg: >-
+      {{ qemu_guest_agent_port }} is missing: set `agent: 1` on vmid {{ vmid }}
+      (qm set {{ vmid }} --agent enabled=1) and restart the VM.
+  when: not qemu_guest_agent_port_stat.stat.exists

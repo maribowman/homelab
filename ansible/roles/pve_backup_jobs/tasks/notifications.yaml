@@ -1,0 +1,92 @@
+---
+# Webhook endpoint + matcher that sends failed vzdump jobs to Discord.
+# PVE stores the webhook body and header values base64-encoded, so we compare encoded values.
+- name: Read webhook endpoints
+  ansible.builtin.command:
+    argv: [pvesh, get, /cluster/notifications/endpoints/webhook, --output-format, json]
+  register: pve_backup_jobs_endpoint_list
+  changed_when: false
+  check_mode: false
+
+- name: Read notification matchers
+  ansible.builtin.command:
+    argv: [pvesh, get, /cluster/notifications/matchers, --output-format, json]
+  register: pve_backup_jobs_matcher_list
+  changed_when: false
+  check_mode: false
+
+- name: Compare notification config with desired state
+  vars:
+    pve_backup_jobs_ep: >-
+      {{ pve_backup_jobs_endpoint_list.stdout | from_json
+         | selectattr('name', 'equalto', pve_backup_jobs_notify_endpoint) | first | default(none) }}
+    pve_backup_jobs_m: >-
+      {{ pve_backup_jobs_matcher_list.stdout | from_json
+         | selectattr('name', 'equalto', pve_backup_jobs_notify_matcher) | first | default(none) }}
+  ansible.builtin.set_fact:
+    pve_backup_jobs_endpoint_state: >-
+      {{ 'create' if pve_backup_jobs_ep is none
+         else 'update' if (pve_backup_jobs_ep.url | default('') != discord_webhook_url
+                           or pve_backup_jobs_ep.method | default('') | lower != 'post'
+                           or pve_backup_jobs_ep.body | default('') != pve_backup_jobs_notify_body_b64
+                           or pve_backup_jobs_notify_header not in pve_backup_jobs_ep.header | default([]))
+         else 'ok' }}
+    pve_backup_jobs_matcher_state: >-
+      {{ 'create' if pve_backup_jobs_m is none
+         else 'update' if (pve_backup_jobs_m.target | default([]) | list != [pve_backup_jobs_notify_endpoint]
+                           or pve_backup_jobs_m['match-severity'] | default([]) | join(',') | split(',') | sort
+                              != pve_backup_jobs_notify_severities | sort
+                           or pve_backup_jobs_m['match-field'] | default([]) | list | sort
+                              != pve_backup_jobs_notify_match_fields | sort
+                           or pve_backup_jobs_m.mode | default('all') != 'all')
+         else 'ok' }}
+  no_log: true
+
+- name: Create Discord webhook endpoint
+  ansible.builtin.command:
+    argv: "{{ ['pvesh', 'create', '/cluster/notifications/endpoints/webhook', '--name', pve_backup_jobs_notify_endpoint]
+      + pve_backup_jobs_endpoint_opts }}"
+  vars: &pve_backup_jobs_endpoint_vars
+    pve_backup_jobs_endpoint_opts:
+      - --url
+      - "{{ discord_webhook_url }}"
+      - --method
+      - post
+      - --header
+      - "{{ pve_backup_jobs_notify_header }}"
+      - --body
+      - "{{ pve_backup_jobs_notify_body_b64 }}"
+      - --comment
+      - "{{ pve_backup_jobs_notify_comment }}"
+  changed_when: true
+  no_log: true
+  when: pve_backup_jobs_endpoint_state == 'create'
+
+- name: Update Discord webhook endpoint
+  ansible.builtin.command:
+    argv: "{{ ['pvesh', 'set', '/cluster/notifications/endpoints/webhook/' ~ pve_backup_jobs_notify_endpoint]
+      + pve_backup_jobs_endpoint_opts }}"
+  vars: *pve_backup_jobs_endpoint_vars
+  changed_when: true
+  no_log: true
+  when: pve_backup_jobs_endpoint_state == 'update'
+
+- name: Create notification matcher
+  ansible.builtin.command:
+    argv: "{{ ['pvesh', 'create', '/cluster/notifications/matchers', '--name', pve_backup_jobs_notify_matcher]
+      + pve_backup_jobs_matcher_opts }}"
+  vars: &pve_backup_jobs_matcher_vars
+    pve_backup_jobs_matcher_opts: >-
+      {{ ['--target', pve_backup_jobs_notify_endpoint, '--mode', 'all', '--comment', pve_backup_jobs_notify_comment]
+         + (['--match-severity'] | product(pve_backup_jobs_notify_severities) | flatten)
+         + (['--match-field'] | product(pve_backup_jobs_notify_match_fields) | flatten) }}
+  changed_when: true
+  when: pve_backup_jobs_matcher_state == 'create'
+
+- name: Update notification matcher
+  ansible.builtin.command:
+    argv: "{{ ['pvesh', 'set', '/cluster/notifications/matchers/' ~ pve_backup_jobs_notify_matcher]
+      + pve_backup_jobs_matcher_opts }}"
+  vars: *pve_backup_jobs_matcher_vars
+  changed_when: true
+  when: pve_backup_jobs_matcher_state == 'update'

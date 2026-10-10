@@ -1,0 +1,43 @@
+---
+# Desired option sets, keyed by the option names `proxmox-backup-manager` uses both as
+# CLI flags (--<key>) and in its JSON output. The *_opts lists are the matching CLI args.
+pbs_server_datastore_desired:
+  gc-schedule: "{{ pbs_server_gc_schedule }}"
+  verify-new: "{{ pbs_server_verify_new | bool }}"
+  notification-mode: "{{ pbs_server_notification_mode }}"
+
+pbs_server_prune_desired:
+  schedule: "{{ pbs_server_prune_schedule }}"
+  keep-last: "{{ pbs_keep_last }}"
+  keep-weekly: "{{ pbs_keep_weekly }}"
+  keep-monthly: "{{ pbs_keep_monthly }}"
+
+pbs_server_verify_desired:
+  schedule: "{{ pbs_server_verify_schedule }}"
+  ignore-verified: "{{ pbs_server_verify_ignore_verified | bool }}"
+  outdated-after: "{{ pbs_server_verify_outdated_after }}"
+
+pbs_server_datastore_opts: >-
+  {%- set ns = namespace(a=[]) -%}
+  {%- for k, v in pbs_server_datastore_desired.items() -%}
+  {%- set ns.a = ns.a + ['--' ~ k, (v | string | lower) if v is boolean else (v | string)] -%}
+  {%- endfor -%}
+  {{ ns.a }}
+
+pbs_server_prune_opts: >-
+  {%- set ns = namespace(a=[]) -%}
+  {%- for k, v in pbs_server_prune_desired.items() -%}
+  {%- set ns.a = ns.a + ['--' ~ k, (v | string | lower) if v is boolean else (v | string)] -%}
+  {%- endfor -%}
+  {{ ns.a }}
+
+pbs_server_verify_opts: >-
+  {%- set ns = namespace(a=[]) -%}
+  {%- for k, v in pbs_server_verify_desired.items() -%}
+  {%- set ns.a = ns.a + ['--' ~ k, (v | string | lower) if v is boolean else (v | string)] -%}
+  {%- endfor -%}
+  {{ ns.a }}
+
+# Webhook header/body as PBS stores them (base64-encoded values)
+pbs_server_notify_header: "name=Content-Type,value={{ 'application/json' | b64encode }}"
+pbs_server_notify_body_b64: "{{ pbs_server_notify_body | b64encode }}"

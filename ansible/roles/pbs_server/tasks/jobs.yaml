@@ -1,0 +1,72 @@
+---
+# Existing jobs (e.g. created in the UI with a generated id) are adopted by matching on
+# the datastore, so re-running never creates a duplicate job.
+- name: Read prune jobs
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, prune-job, list, --output-format, json]
+  register: pbs_server_prune_list
+  changed_when: false
+  check_mode: false
+
+- name: Read verify jobs
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, verify-job, list, --output-format, json]
+  register: pbs_server_verify_list
+  changed_when: false
+  check_mode: false
+
+- name: Compare jobs with desired config
+  vars:
+    pbs_server_prune_cur: "{{ pbs_server_prune_list.stdout | from_json | selectattr('store', 'equalto', pbs_datastore) | first | default(none) }}"
+    pbs_server_verify_cur: "{{ pbs_server_verify_list.stdout | from_json | selectattr('store', 'equalto', pbs_datastore) | first | default(none) }}"
+  ansible.builtin.set_fact:
+    pbs_server_prune_current: "{{ pbs_server_prune_cur }}"
+    pbs_server_verify_current: "{{ pbs_server_verify_cur }}"
+    pbs_server_prune_diff: >-
+      {%- set ns = namespace(keys=[]) -%}
+      {%- for k, v in pbs_server_prune_desired.items() -%}
+      {%- if ((pbs_server_prune_cur or {})[k] | default('') | string | lower) != (v | string | lower) -%}
+      {%- set ns.keys = ns.keys + [k] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ ns.keys }}
+    pbs_server_verify_diff: >-
+      {%- set ns = namespace(keys=[]) -%}
+      {%- for k, v in pbs_server_verify_desired.items() -%}
+      {%- if ((pbs_server_verify_cur or {})[k] | default('') | string | lower) != (v | string | lower) -%}
+      {%- set ns.keys = ns.keys + [k] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ ns.keys }}
+
+- name: Create prune job
+  ansible.builtin.command:
+    argv: "{{ [
+      'proxmox-backup-manager', 'prune-job', 'create', pbs_server_prune_job_id,
+      '--store', pbs_datastore] + pbs_server_prune_opts }}"
+  changed_when: true
+  when: pbs_server_prune_current is none
+
+- name: Update prune job
+  ansible.builtin.command:
+    argv: "{{ ['proxmox-backup-manager', 'prune-job', 'update', pbs_server_prune_current.id] + pbs_server_prune_opts }}"
+  changed_when: true
+  when:
+    - pbs_server_prune_current is not none
+    - pbs_server_prune_diff | length > 0
+
+- name: Create verify job
+  ansible.builtin.command:
+    argv: "{{ [
+      'proxmox-backup-manager', 'verify-job', 'create', pbs_server_verify_job_id,
+      '--store', pbs_datastore] + pbs_server_verify_opts }}"
+  changed_when: true
+  when: pbs_server_verify_current is none
+
+- name: Update verify job
+  ansible.builtin.command:
+    argv: "{{ ['proxmox-backup-manager', 'verify-job', 'update', pbs_server_verify_current.id] + pbs_server_verify_opts }}"
+  changed_when: true
+  when:
+    - pbs_server_verify_current is not none
+    - pbs_server_verify_diff | length > 0

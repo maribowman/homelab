@@ -1,0 +1,39 @@
+---
+# Synology CIFS mount (password comes from vault: synology_cifs_password)
+pbs_server_cifs_user: "proxmox-backup-server"
+pbs_server_credentials_file: "/etc/pbs-synology-credentials"
+pbs_server_mount_path: "/mnt/proxmox_backup_home"
+pbs_server_mount_opts: "credentials={{ pbs_server_credentials_file }},vers=2.0,uid=backup,gid=backup,iocharset=utf8"
+
+# Datastore (name: pbs_datastore). The CIFS mount only covers the top-level share,
+# the PBS subdir is selected here.
+pbs_server_datastore_path: "{{ pbs_server_mount_path }}/{{ nas_subdir }}"
+pbs_server_gc_schedule: "daily"
+pbs_server_verify_new: true
+pbs_server_notification_mode: "notification-system"
+
+# PBS user PVE authenticates with (password comes from vault: pbs_user_password)
+pbs_server_pve_user: "proxmox@pbs"
+pbs_server_pve_user_role: "DatastoreAdmin"
+pbs_server_pve_user_acl_path: "/datastore"
+
+# Prune job (keep-* come from the shared pbs_keep_* vars). An existing prune job for
+# the datastore is adopted whatever its id; this id is only used when creating one.
+pbs_server_prune_job_id: "{{ pbs_datastore }}-prune"
+pbs_server_prune_schedule: "daily"
+
+# Verify job. Same adoption rule as the prune job.
+pbs_server_verify_job_id: "{{ pbs_datastore }}-verify"
+pbs_server_verify_schedule: "daily"
+pbs_server_verify_ignore_verified: true
+pbs_server_verify_outdated_after: 30
+
+# Discord webhook notification (URL comes from vault: discord_webhook_url).
+# Skipped when discord_webhook_url is undefined or empty.
+pbs_server_notify_endpoint: "discord"
+pbs_server_notify_matcher: "discord-errors"
+pbs_server_notify_severities: ["error"]
+# Handlebars template rendered by PBS (not by Ansible, hence !unsafe). The message body
+# is left out on purpose: Discord rejects content > 2000 chars and task logs can be longer.
+pbs_server_notify_body: !unsafe '{"content": ":rotating_light: **{{ escape title }}** (severity: {{ severity }})"}'
+pbs_server_notify_comment: "managed by ansible (pbs_server)"

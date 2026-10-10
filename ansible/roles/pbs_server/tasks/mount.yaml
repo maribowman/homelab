@@ -1,0 +1,27 @@
+---
+- name: Install cifs-utils
+  ansible.builtin.apt:
+    name: cifs-utils
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Write Synology CIFS credentials
+  ansible.builtin.copy:
+    dest: "{{ pbs_server_credentials_file }}"
+    content: |
+      username={{ pbs_server_cifs_user }}
+      password={{ synology_cifs_password }}
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Mount Synology share
+  ansible.posix.mount:
+    src: "//{{ nas_host }}/{{ nas_share }}"
+    path: "{{ pbs_server_mount_path }}"
+    fstype: cifs
+    opts: "{{ pbs_server_mount_opts }}"
+    state: mounted

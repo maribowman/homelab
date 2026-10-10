@@ -2,152 +2,82 @@
 
 ## Overview
 
-This guide documents the setup of Proxmox Backup Server (PBS) running as an LXC container on Proxmox VE (PVE), storing backups on a Synology NAS via CIFS/SMB.
+Proxmox Backup Server (PBS) runs as an LXC container (vmid `1001`) on Proxmox VE (PVE) and stores backups on a Synology NAS via CIFS/SMB.
+
+Almost everything is configured as code by `ansible/playbooks/backup.yaml`:
+
+| Role | Host | What it configures |
+| ---- | ---- | ------------------ |
+| [`pbs_server`](ansible/roles/pbs_server/) | `pbs_hosts` | `cifs-utils`, `/etc/pbs-synology-credentials`, the fstab mount of `//nas_host/nas_share`, the `pbs_datastore` datastore (GC daily, verify-new), the `proxmox@pbs` user with `DatastoreAdmin` on `/datastore`, the prune job (`pbs_keep_*`), the verify job, and a Discord webhook + matcher for job errors |
+| [`pve_backup_jobs`](ansible/roles/pve_backup_jobs/) | `proxmox_hosts` | The `pve_pbs_storage_id` PBS storage (fingerprint read from PBS, "keep all" retention), the vzdump job (all guests except `backup_exclude_vmids`, snapshot mode, zstd, `backup_schedule`), and a Discord webhook + matcher for failed backups |
+| [`qemu_guest_agent`](ansible/roles/qemu_guest_agent/) | `ubuntu_nodes` | Installs and starts `qemu-guest-agent` (consistent snapshot-mode backups of VMs) |
+
+```sh
+task ansible:backup:check    # dry run with diff
+task ansible:backup:apply    # apply
+task ansible:backup:syntax   # syntax check
+```
+
+All values (IPs, datastore, schedule, retention) live in `ansible/inventory/group_vars/all/vars.yaml` and the role `defaults/`. Secrets come from the vault: `synology_cifs_password`, `pbs_user_password`, `discord_webhook_url`.
+
+> PBS is excluded from its own backup job to prevent a deadlock where PBS tries to back up itself while writing backups. Retention is managed only on the PBS side (prune job); the PVE storage keeps all backups.
+
+The steps below cannot be automated and are needed once, before the first `backup:apply`.
 
 ---
 
-## 1. Prerequisites
+## 1. Install PBS
 
-- PBS installed via [community-scripts](https://community-scripts.org/scripts/proxmox-backup-server) and post-install script run
-- Synology NAS with:
-  - A dedicated shared folder (e.g. `backups`) containing a subfolder for PBS (e.g. `proxmox_backup_home`)
-  - A dedicated `proxmox-backup-server` OS user created
-  - SMB enabled (Control Panel → File Services → SMB)
+Install PBS via [community-scripts](https://community-scripts.org/scripts/proxmox-backup-server) and run its post-install script. The LXC must be able to mount CIFS shares (privileged container, or the `mount=cifs` feature).
 
 ---
 
-## 2. Synology Permissions
+## 2. Synology user and share
 
-Since CIFS mounts only the top-level shared folder, permissions must be set at two levels:
+- Enable SMB: Control Panel → File Services → SMB.
+- Create a dedicated `proxmox-backup-server` OS user; store its password in the vault as `synology_cifs_password`.
+- Create a shared folder (`backups`, see `nas_share`) with a subfolder for PBS (`proxmox_backup_home`, see `nas_subdir`).
 
-- **Shared folder level** (`backups`): grant `proxmox-backup-server` user **Read Only**
+### Permissions
+
+CIFS mounts only the top-level shared folder, so permissions are set at two levels:
+
+- **Shared folder level** (`backups`): grant `proxmox-backup-server` **Read Only**
   - Control Panel → Shared Folder → Edit → Permissions
 - **Subfolder level** (`proxmox_backup_home`): grant **Read/Write**
   - Enable advanced permissions: Shared Folder → Edit → Advanced → Enable advanced share permissions
   - File Station → right-click `proxmox_backup_home` → Properties → Permission
 
+> The subdirectory cannot be part of the CIFS mount path, only the top-level share can be mounted. The subdirectory is selected as the datastore path instead (`/mnt/proxmox_backup_home/proxmox_backup_home`).
+
 ---
 
-## 3. Mount Synology Share on PBS Host
+## 3. Vault keys
 
-SSH into the PBS host and run:
+```sh
+ansible-vault edit ansible/inventory/group_vars/all/vault.yaml
+```
+
+| Key | Used for |
+| --- | -------- |
+| `synology_cifs_password` | CIFS credentials file on PBS |
+| `pbs_user_password` | `proxmox@pbs`; set when the user is created and used by the PVE storage. Changing it later updates PVE, but the PBS user's password must be changed by hand. |
+| `discord_webhook_url` | PVE/PBS notification webhooks (skipped when unset) |
+
+---
+
+## 4. Useful checks
 
 ```bash
-apt install cifs-utils -y
-mkdir -p /mnt/proxmox_backup_home
-vim /etc/pbs-synology-credentials
-```
-
-Contents of `/etc/pbs-synology-credentials`:
-
-```
-username=proxmox-backup-server
-password=YOUR_PASSWORD
-```
-
-Secure the credentials file:
-
-```bash
-chmod 600 /etc/pbs-synology-credentials
-```
-
-Add to `/etc/fstab`:
-
-```
-//NAS_IP/backups /mnt/proxmox_backup_home cifs credentials=/etc/pbs-synology-credentials,vers=2.0,uid=backup,gid=backup,iocharset=utf8 0 0
-```
-
-Mount and verify:
-
-```bash
-systemctl daemon-reload
-mount -a
+# PBS
 df -h | grep proxmox
+proxmox-backup-manager datastore list
+proxmox-backup-manager prune-job list
+proxmox-backup-manager verify-job list
+
+# PVE
+pvesm status
+pvesh get /cluster/backup
 ```
 
-> **Note:** The subdirectory (`proxmox_backup_home`) cannot be part of the CIFS mount path — only the top-level share (`backups`) can be mounted. The subdirectory is instead specified at the PBS Datastore level.
-
----
-
-## 4. Create PBS Datastore
-
-1. Open PBS web UI at `https://PBS_IP:8007`
-2. Go to **Datastore → Add Datastore**
-3. Set:
-   - **Name**: `synology-backup`
-   - **Backing Path**: `/mnt/proxmox_backup_home/proxmox_backup_home`
-   - **GC Schedule**: `daily`
-   - **Prune Schedule**: `daily`
-
----
-
-## 5. Configure Retention on PBS
-
-In PBS: **Datastore → synology-backup → Prune & GC Jobs → Edit**
-
-| Setting      | Value |
-| ------------ | ----- |
-| Keep Last    | 3     |
-| Keep Weekly  | 3     |
-| Keep Monthly | 3     |
-
-> Retention is managed exclusively on the PBS side. On the PVE storage definition, "Keep all backups" is checked to avoid conflicts.
-
----
-
-## 6. PBS Access Control
-
-A dedicated `proxmox@pbs` user is created in PBS with the `DatastoreAdmin` role scoped to `/datastore` (with propagation enabled).
-
-In PBS: **Configuration → Access Control → Permissions → Add**
-
-- **Path**: `/datastore`
-- **User**: `proxmox@pbs`
-- **Role**: `DatastoreAdmin`
-- **Propagate**: Yes
-
----
-
-## 7. Add PBS as Storage in Proxmox VE
-
-Get the PBS fingerprint first:
-
-```bash
-proxmox-backup-manager cert info | grep Fingerprint
-```
-
-In PVE: **Datacenter → Storage → Add → Proxmox Backup Server**
-
-| Field            | Value                             |
-| ---------------- | --------------------------------- |
-| ID               | `pbs-synology`                    |
-| Server           | `10.0.40.20`                   |
-| Username         | `proxmox@pbs`                     |
-| Datastore        | `synology-backup`                 |
-| Fingerprint      | _(output from above command)_     |
-| Backup Retention | Keep all backups (managed by PBS) |
-
----
-
-## 8. Create Backup Job in PVE
-
-In PVE: **Datacenter → Backup → Add**
-
-| Field          | Value                                         |
-| -------------- | --------------------------------------------- |
-| Node           | `pve`                                         |
-| Storage        | `pbs-synology`                                |
-| Schedule       | `01:00`                                       |
-| Selection Mode | Exclude selected VMs                          |
-| Excluded       | `1001` (PBS LXC — excluded to avoid deadlock) |
-| Mode           | Snapshot                                      |
-| Compression    | ZSTD                                          |
-
-> PBS is excluded from its own backup job to prevent a deadlock situation where PBS tries to back up itself while actively writing backups.
-
----
-
-## 9. Additional Settings
-
-- **Verify new snapshots**: Enabled in PBS — automatically verifies backup integrity after each write
-- **Deduplication**: PBS deduplicates chunks across backups, significantly reducing actual storage usage. Check the Deduplication Factor on the PBS Datastore Summary page after a few backups.
+Check the deduplication factor on the PBS datastore summary page after a few backups.

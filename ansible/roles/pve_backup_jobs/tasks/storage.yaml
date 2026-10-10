@@ -1,0 +1,80 @@
+---
+- name: Read PBS certificate fingerprint
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, cert, info]
+  delegate_to: "{{ groups['pbs_hosts'] | first }}"
+  register: pve_backup_jobs_cert_info
+  changed_when: false
+  check_mode: false
+
+- name: Extract fingerprint
+  ansible.builtin.set_fact:
+    pve_backup_jobs_fingerprint: >-
+      {{ pve_backup_jobs_cert_info.stdout
+         | regex_search('Fingerprint [(]sha256[)]: *([0-9A-Fa-f:]+)', '\1') | first | lower }}
+
+- name: Read PVE storages
+  ansible.builtin.command:
+    argv: [pvesh, get, /storage, --output-format, json]
+  register: pve_backup_jobs_storage_list
+  changed_when: false
+  check_mode: false
+
+# PVE keeps the PBS password in a root-only file, which lets us detect password drift
+- name: Read stored PBS password
+  ansible.builtin.slurp:
+    src: "/etc/pve/priv/storage/{{ pve_pbs_storage_id }}.pw"
+  register: pve_backup_jobs_password_file
+  failed_when: false
+  no_log: true
+
+- name: Compare PBS storage with desired config
+  vars:
+    pve_backup_jobs_cur: "{{ pve_backup_jobs_storage_list.stdout | from_json | selectattr('storage', 'equalto', pve_pbs_storage_id) | first | default(none) }}"
+  ansible.builtin.set_fact:
+    pve_backup_jobs_storage_current: "{{ pve_backup_jobs_cur }}"
+    pve_backup_jobs_storage_diff: >-
+      {%- set ns = namespace(keys=[]) -%}
+      {%- for k, v in pve_backup_jobs_storage_desired.items() -%}
+      {%- if ((pve_backup_jobs_cur or {})[k] | default('') | string | lower) != (v | string | lower) -%}
+      {%- set ns.keys = ns.keys + [k] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ ns.keys }}
+    pve_backup_jobs_password_changed: >-
+      {{ (pve_backup_jobs_password_file.content | default('') | b64decode | trim) != pbs_user_password }}
+  no_log: true
+
+- name: Assert existing storage is a PBS storage on the right datastore
+  ansible.builtin.assert:
+    that:
+      - pve_backup_jobs_storage_current.type == 'pbs'
+      - pve_backup_jobs_storage_current.datastore == pbs_datastore
+    fail_msg: >-
+      Storage {{ pve_pbs_storage_id }} is type {{ pve_backup_jobs_storage_current.type }} on datastore
+      {{ pve_backup_jobs_storage_current.datastore | default('-') }}; expected pbs on {{ pbs_datastore }}.
+      Type and datastore cannot be changed in place.
+    quiet: true
+  when: pve_backup_jobs_storage_current is not none
+
+- name: Create PBS storage
+  ansible.builtin.command:
+    argv: "{{ [
+      'pvesh', 'create', '/storage',
+      '--storage', pve_pbs_storage_id, '--type', 'pbs', '--datastore', pbs_datastore,
+      '--password', pbs_user_password]
+      + pve_backup_jobs_storage_opts }}"
+  changed_when: true
+  no_log: true
+  when: pve_backup_jobs_storage_current is none
+
+- name: Update PBS storage
+  ansible.builtin.command:
+    argv: "{{ ['pvesh', 'set', '/storage/' ~ pve_pbs_storage_id]
+      + pve_backup_jobs_storage_opts
+      + (['--password', pbs_user_password] if pve_backup_jobs_password_changed else []) }}"
+  changed_when: true
+  no_log: true
+  when:
+    - pve_backup_jobs_storage_current is not none
+    - pve_backup_jobs_storage_diff | length > 0 or pve_backup_jobs_password_changed
