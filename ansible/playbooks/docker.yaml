@@ -8,4 +8,6 @@
 
   roles:
     - role: sync_docker_stacks
+      tags: [sync]
     - role: deploy_docker_stacks
+      tags: [deploy]

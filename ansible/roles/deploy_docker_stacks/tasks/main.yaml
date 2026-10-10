@@ -48,7 +48,9 @@
       loop_control:
         label: "{{ item | basename }}"
       register: deploy_docker_stacks_compose
-      changed_when: (deploy_docker_stacks_compose.stdout ~ deploy_docker_stacks_compose.stderr) is search('(Created|Recreated|Started|Restarted|Stopped|Removed)')
+      changed_when: >-
+        (deploy_docker_stacks_compose.stdout ~ deploy_docker_stacks_compose.stderr)
+        is search('(Created|Recreated|Started|Restarted|Stopped|Removed)')
       when: docker_state != 'health'
 
     - name: Wait for docker stack containers to be running and healthy

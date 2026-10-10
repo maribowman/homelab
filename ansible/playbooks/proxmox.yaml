@@ -5,10 +5,12 @@
 #      snapshot -> [docker down] -> apt dist-upgrade -> reboot if needed -> [docker up + health]
 #   3. PVE host: apt dist-upgrade, never rebooted; warns when a reboot is pending
 #
-# A failed snapshot skips that guest. A failed update sends the rollback command and
-# fails the host; with serial: 1 that stops the run, so PBS and the PVE host stay untouched.
+#   4. Run summary: one Discord message for all hosts; fails the run if any update failed
 #
-# Per-host results for a run summary: update_proxmox_machines_status (ok | skipped | failed),
+# A failed snapshot skips that guest. A failed update sends the rollback command and ends
+# that guest; every remaining guest, PBS and the PVE host are then marked not_run.
+#
+# Per-host results: update_proxmox_machines_status (ok | skipped | failed | not_run),
 # update_proxmox_machines_packages, update_pve_host_status, update_pve_host_reboot_pending.
 
 - name: Preflight backup check
@@ -26,6 +28,19 @@
   become: true
 
   tasks: &guest_update_tasks
+    - name: Skip guest after an earlier failed update
+      when: >-
+        groups['guests'] | map('extract', hostvars)
+        | selectattr('update_proxmox_machines_status', 'defined')
+        | selectattr('update_proxmox_machines_status', 'eq', 'failed') | list | length > 0
+      block:
+        - name: Record guest not run
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: not_run
+
+        - name: End guest
+          ansible.builtin.meta: end_host
+
     - name: Snapshot guest
       block:
         - name: Create pre-update snapshot
@@ -108,9 +123,9 @@
               Remaining hosts were not updated.
             notify_level: error
 
-        - name: Stop the run
-          ansible.builtin.fail:
-            msg: "Update of {{ inventory_hostname }} failed, stopping (snapshot {{ snapshot_proxmox_machines_snapname }})"
+        # Not a hard failure, so the run summary still goes out; the summary play fails the run
+        - name: Stop updating this guest
+          ansible.builtin.meta: end_host
 
 # Same tasks as above, as a separate play so PBS is always updated last
 - name: Update PBS
@@ -128,6 +143,19 @@
   become: true
 
   tasks:
+    - name: Skip PVE host after a failed guest update
+      when: >-
+        groups['guests'] | map('extract', hostvars)
+        | selectattr('update_proxmox_machines_status', 'defined')
+        | selectattr('update_proxmox_machines_status', 'eq', 'failed') | list | length > 0
+      block:
+        - name: Record PVE host not run
+          ansible.builtin.set_fact:
+            update_pve_host_status: not_run
+
+        - name: End PVE host
+          ansible.builtin.meta: end_host
+
     - name: Update PVE host
       block:
         - name: Upgrade packages
@@ -163,6 +191,59 @@
               {{ ansible_failed_result.msg | default('unknown error') }}
             notify_level: error
 
-        - name: Fail PVE host
-          ansible.builtin.fail:
-            msg: "Update of {{ inventory_hostname }} failed"
+# One Discord message for the whole run. Runs on the managed hosts (not localhost) so it
+# also runs under --limit; only hosts that took part in this run are listed.
+- name: Run summary
+  hosts: guests:proxmox_hosts
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Collect per-host results
+      vars:
+        maintenance_hv: "{{ hostvars[item] }}"
+        maintenance_is_pve: "{{ item in groups['proxmox_hosts'] }}"
+        maintenance_status: >-
+          {{ maintenance_hv.update_pve_host_status if maintenance_is_pve else maintenance_hv.update_proxmox_machines_status }}
+        maintenance_packages: >-
+          {{ maintenance_hv.update_pve_host_packages | default(0) if maintenance_is_pve
+             else maintenance_hv.update_proxmox_machines_packages | default(0) }}
+        maintenance_flag: >-
+          {{ ', REBOOT PENDING' if maintenance_is_pve and maintenance_hv.update_pve_host_reboot_pending | default(false)
+             else (', rebooted' if maintenance_hv.update_proxmox_machines_rebooted | default(false) else '') }}
+      ansible.builtin.set_fact:
+        maintenance_results: >-
+          {{ maintenance_results | default([]) + [{
+               'host': item,
+               'status': maintenance_status,
+               'line': item ~ ': ' ~ maintenance_status
+                       ~ ((' (' ~ maintenance_packages ~ ' packages' ~ maintenance_flag ~ ')') if maintenance_status == 'ok' else '')
+             }] }}
+      loop: "{{ groups['guests'] + groups['proxmox_hosts'] }}"
+      when: >-
+        (hostvars[item].update_pve_host_status is defined)
+        if item in groups['proxmox_hosts'] else (hostvars[item].update_proxmox_machines_status is defined)
+      run_once: true
+
+    - name: Send run summary
+      vars:
+        maintenance_list: "{{ maintenance_results | default([]) }}"
+        maintenance_failed: "{{ maintenance_list | selectattr('status', 'eq', 'failed') | list }}"
+        maintenance_warn: >-
+          {{ maintenance_list | selectattr('status', 'in', ['skipped', 'not_run']) | list | length > 0
+             or maintenance_list | map(attribute='line') | select('search', 'REBOOT PENDING') | list | length > 0 }}
+        notify_title: "Maintenance summary{{ ' (check mode)' if ansible_check_mode else '' }}"
+        notify_message: "{{ maintenance_list | map(attribute='line') | join('\n') or 'No hosts updated' }}"
+        notify_level: "{{ 'error' if maintenance_failed | length > 0 else ('warn' if maintenance_warn else 'info') }}"
+        notify_run_once: true
+      ansible.builtin.include_role:
+        name: notify_discord
+
+    # Exit non-zero so the systemd unit's OnFailure notification fires as well
+    - name: Fail the run when an update failed
+      vars:
+        maintenance_failed: "{{ maintenance_results | default([]) | selectattr('status', 'eq', 'failed') | map(attribute='host') | list }}"
+      ansible.builtin.fail:
+        msg: "Maintenance failed on: {{ maintenance_failed | join(', ') }}"
+      run_once: true
+      when: maintenance_failed | length > 0
