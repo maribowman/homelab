@@ -1,0 +1,7 @@
+---
+# At least one of these PVE repositories must be enabled before upgrading
+update_pve_host_repos:
+  - pve-no-subscription
+  - pve-enterprise
+# Kept off: autoremove on PVE can remove fallback kernels
+update_pve_host_autoremove: false

@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Send Discord failure notification for %i
+
+[Service]
+Type=oneshot
+EnvironmentFile=-{{ control_node_config_dir }}/notify.env
+ExecStart=/usr/local/bin/homelab-notify %i

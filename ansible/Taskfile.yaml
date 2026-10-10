@@ -19,6 +19,18 @@ includes:
       VENV: "{{.VENV}}"
       VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
       PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/docker.yaml"
+  backup:
+    taskfile: ./taskfiles/backup.yaml
+    vars:
+      VENV: "{{.VENV}}"
+      VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
+      PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/backup.yaml"
+  control:
+    taskfile: ./taskfiles/control.yaml
+    vars:
+      VENV: "{{.VENV}}"
+      VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
+      PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/control.yaml"
 
 tasks:
   init:

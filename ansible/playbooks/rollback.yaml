@@ -1,0 +1,109 @@
+---
+# Roll a guest back to its newest pre-update snapshot and start it again:
+#   task ansible:proxmox:rollback HOST=lxc-tailscale
+#   ansible-playbook playbooks/rollback.yaml -e target=lxc-tailscale [-e snapshot=pre_update_20261011_0400]
+
+- name: Roll back guest to pre-update snapshot
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    rollback_api_url: "https://{{ pve_host }}:8006/api2/json"
+    rollback_auth_header: "PVEAPIToken={{ pve_user }}!{{ pve_token_id }}={{ pve_token_secret }}"
+    rollback_vmid: "{{ hostvars[target]['vmid'] | int }}"
+    rollback_guest_url: "{{ rollback_api_url }}/nodes/{{ rollback_guest.node }}/{{ rollback_guest.type }}/{{ rollback_vmid }}"
+    rollback_start: true
+    rollback_timeout: 300
+
+  tasks:
+    - name: Validate target
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['guests']
+          - hostvars[target]['vmid'] is defined
+        fail_msg: "Pass -e target=<host>, one of: {{ groups['guests'] | join(', ') }}"
+        quiet: true
+
+    - name: Find guest on the cluster
+      ansible.builtin.uri:
+        url: "{{ rollback_api_url }}/cluster/resources?type=vm"
+        headers:
+          Authorization: "{{ rollback_auth_header }}"
+        validate_certs: false
+      register: rollback_resources
+      check_mode: false
+      no_log: true
+
+    - name: Pick guest resource
+      ansible.builtin.set_fact:
+        rollback_guest: "{{ rollback_resources.json.data | selectattr('vmid', 'equalto', rollback_vmid | int) | first }}"
+
+    - name: List guest snapshots
+      ansible.builtin.uri:
+        url: "{{ rollback_guest_url }}/snapshot"
+        headers:
+          Authorization: "{{ rollback_auth_header }}"
+        validate_certs: false
+      register: rollback_snapshots
+      check_mode: false
+      no_log: true
+
+    - name: Pick snapshot
+      ansible.builtin.set_fact:
+        rollback_snapname: >-
+          {{ snapshot | default(rollback_snapshots.json.data
+             | selectattr('name', 'match', snapshot_prefix ~ '_')
+             | sort(attribute='snaptime') | map(attribute='name') | last | default(''), true) }}
+
+    - name: Assert a snapshot was found
+      ansible.builtin.assert:
+        that: rollback_snapname | length > 0
+        fail_msg: "No {{ snapshot_prefix }}_* snapshot found for {{ target }} ({{ rollback_vmid }})"
+        quiet: true
+
+    - name: Roll back to snapshot
+      community.proxmox.proxmox_snap:
+        api_host: "{{ pve_host }}"
+        api_user: "{{ pve_user }}"
+        api_token_id: "{{ pve_token_id }}"
+        api_token_secret: "{{ pve_token_secret }}"
+        vmid: "{{ rollback_vmid }}"
+        state: rollback
+        snapname: "{{ rollback_snapname }}"
+        timeout: "{{ rollback_timeout }}"
+
+    # PVE leaves the guest stopped after rolling back to a snapshot without RAM state
+    - name: Read guest status
+      ansible.builtin.uri:
+        url: "{{ rollback_guest_url }}/status/current"
+        headers:
+          Authorization: "{{ rollback_auth_header }}"
+        validate_certs: false
+      register: rollback_status
+      when: rollback_start | bool
+      check_mode: false
+      no_log: true
+
+    - name: Start guest
+      ansible.builtin.uri:
+        url: "{{ rollback_guest_url }}/status/start"
+        method: POST
+        headers:
+          Authorization: "{{ rollback_auth_header }}"
+        validate_certs: false
+      when:
+        - rollback_start | bool
+        - rollback_status.json.data.status != 'running'
+      no_log: true
+      changed_when: true
+
+    - name: Notify rollback
+      ansible.builtin.include_role:
+        name: notify_discord
+      vars:
+        notify_title: "Rollback: {{ target }}"
+        notify_message: "Rolled back to snapshot {{ rollback_snapname }}{{ ' and started' if rollback_start | bool else '' }}"
+        notify_level: warn

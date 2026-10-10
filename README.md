@@ -15,18 +15,76 @@ All metrics and logs are visualized in [Grafana](https://grafana.com/oss/grafana
 
 Personal Discord Bot written in [go](https://go.dev/).
 
+### TimescaleDB
+
+Home Assistant sensor data history.
+
 ## Automation
 
-### Proxmox
+Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the playbooks from this repo on systemd timers, and every run reports to Discord:
+
+| When        | What                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Daily 01:00 | Native PVE backup of all guests to PBS (datastore on the Synology); PBS prunes, garbage-collects and verifies                         |
+| Daily 05:00 | `git pull`; redeploy the Docker stacks if the repo changed                                                                            |
+| Sun 04:00   | Snapshot → update every guest one at a time (PBS last) → health check → upgrade the PVE host (never rebooted automatically) → summary |
+| Continuous  | Renovate PRs for image updates; patch/minor automerge when CI is green                                                                |
+
+## Setup
+
+### Ansible vault
+
+Secrets live in `ansible/inventory/group_vars/all/vault.yaml`, encrypted with the password in `.vault.pass` next to it. Both files are gitignored and exist only on the laptop; `task ansible:control:apply` copies them to the control node. Create them once:
 
 ```sh
-task ansible:proxmox:update   # Snapshot VMs, upgrade packages, reboot if needed
-task ansible:proxmox:syntax   # Syntax-check the proxmox playbook
-task ansible:proxmox:ping     # Test SSH connectivity to all hosts
+echo '<vault password>' > ansible/inventory/group_vars/all/.vault.pass
+chmod 600 ansible/inventory/group_vars/all/.vault.pass
+
+# use `create` instead of `edit` the first time
+ansible/.venv/bin/ansible-vault edit ansible/inventory/group_vars/all/vault.yaml \
+  --vault-password-file ansible/inventory/group_vars/all/.vault.pass
 ```
 
-### Docker
+The vault holds these keys:
 
-```sh
-task ansible:docker:deploy    # Sync stacks from repo to DockerVM and reload Docker stacks
+```yaml
+pve_token_secret: ... # PVE API token root@pam!maintenance
+pbs_user_password: ... # proxmox@pbs
+synology_cifs_password: ... # Synology share for the PBS datastore
+discord_webhook_url: ...
+docker_stack_env: # one dict per stack, rendered to /opt/stacks/<stack>/.env
+  observability:
+    GF_SECURITY_ADMIN_PASSWORD: ...
+  timescaledb:
+    POSTGRES_PASSWORD: ...
 ```
+
+After changing the vault, run `task ansible:control:apply` so the control node gets the new copy.
+
+### Stack `.env` files
+
+`.env` files are never kept in the repo or synced from it. `task ansible:docker:deploy` writes `/opt/stacks/<stack>/.env` on the DockerVM from `docker_stack_env` in the vault, so every key a stack needs must be in the vault (values must not contain a single quote). Stacks not listed there keep their existing `.env`.
+
+Other one-time steps (SSH keys, API token privileges, firewall, Renovate) are listed in [AGENTS.md](AGENTS.md#manual-steps-cannot-be-automated) and [proxmox-backup-server-setup.md](proxmox-backup-server-setup.md).
+
+## Commands
+
+Dependencies (venv, collections) are installed automatically on first use. Extra Ansible args go after `--`, e.g. `task ansible:proxmox:update -- --limit lxc-tailscale`.
+
+| Command                                     | Description                                                                 |
+| ------------------------------------------- | --------------------------------------------------------------------------- |
+| `task ansible:proxmox:update`               | Full maintenance run: snapshot, update guests one by one, PVE host, summary |
+| `task ansible:proxmox:check`                | Dry-run of the above (`--check --diff`)                                     |
+| `task ansible:proxmox:rollback HOST=<host>` | Roll a guest back to its newest pre-update snapshot                         |
+| `task ansible:proxmox:ping`                 | Test SSH connectivity to all hosts                                          |
+| `task ansible:proxmox:syntax`               | Syntax-check the Proxmox playbooks                                          |
+| `task ansible:docker:deploy`                | Sync stacks, write `.env` files, pull pinned images, `up -d`, health check  |
+| `task ansible:docker:restart STACK=<stack>` | Restart a single stack                                                      |
+| `task ansible:backup:apply`                 | Configure PBS (datastore, jobs, notifications) and the PVE backup job       |
+| `task ansible:backup:check`                 | Dry-run of the above                                                        |
+| `task ansible:backup:syntax`                | Syntax-check the backup playbook                                            |
+| `task ansible:control:provision`            | Create the control LXC                                                      |
+| `task ansible:control:apply`                | Configure the control LXC (run from the laptop)                             |
+| `task ansible:control:syntax`               | Syntax-check the control playbook                                           |
+
+See [AGENTS.md](AGENTS.md) for the roles, vars and architecture.

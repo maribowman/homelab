@@ -1,0 +1,71 @@
+---
+# Webhook endpoint + matcher that sends PBS job errors (GC, prune, verify, sync) to Discord.
+# PBS stores the webhook body and header values base64-encoded, so we compare encoded values.
+- name: Read webhook endpoints
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, notification, endpoint, webhook, list, --output-format, json]
+  register: pbs_server_endpoint_list
+  changed_when: false
+  check_mode: false
+
+- name: Read notification matchers
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, notification, matcher, list, --output-format, json]
+  register: pbs_server_matcher_list
+  changed_when: false
+  check_mode: false
+
+- name: Compare notification config with desired state
+  vars:
+    pbs_server_ep: "{{ pbs_server_endpoint_list.stdout | from_json | selectattr('name', 'equalto', pbs_server_notify_endpoint) | first | default(none) }}"
+    pbs_server_m: "{{ pbs_server_matcher_list.stdout | from_json | selectattr('name', 'equalto', pbs_server_notify_matcher) | first | default(none) }}"
+  ansible.builtin.set_fact:
+    pbs_server_endpoint_state: >-
+      {{ 'create' if pbs_server_ep is none
+         else 'update' if (pbs_server_ep.url | default('') != discord_webhook_url
+                           or pbs_server_ep.method | default('') | lower != 'post'
+                           or pbs_server_ep.body | default('') != pbs_server_notify_body_b64
+                           or pbs_server_notify_header not in pbs_server_ep.header | default([]))
+         else 'ok' }}
+    pbs_server_matcher_state: >-
+      {{ 'create' if pbs_server_m is none
+         else 'update' if (pbs_server_m.target | default([]) | list != [pbs_server_notify_endpoint]
+                           or pbs_server_m['match-severity'] | default([]) | join(',') | split(',') | sort
+                              != pbs_server_notify_severities | sort
+                           or pbs_server_m.mode | default('all') != 'all')
+         else 'ok' }}
+  no_log: true
+
+- name: Create or update Discord webhook endpoint
+  ansible.builtin.command:
+    argv:
+      - proxmox-backup-manager
+      - notification
+      - endpoint
+      - webhook
+      - "{{ pbs_server_endpoint_state }}"
+      - "{{ pbs_server_notify_endpoint }}"
+      - --url
+      - "{{ discord_webhook_url }}"
+      - --method
+      - post
+      - --header
+      - "{{ pbs_server_notify_header }}"
+      - --body
+      - "{{ pbs_server_notify_body_b64 }}"
+      - --comment
+      - "{{ pbs_server_notify_comment }}"
+  changed_when: true
+  no_log: true
+  when: pbs_server_endpoint_state in ['create', 'update']
+
+- name: Create or update notification matcher
+  ansible.builtin.command:
+    argv: "{{ [
+      'proxmox-backup-manager', 'notification', 'matcher', pbs_server_matcher_state, pbs_server_notify_matcher,
+      '--target', pbs_server_notify_endpoint,
+      '--mode', 'all',
+      '--comment', pbs_server_notify_comment]
+      + (['--match-severity'] | product(pbs_server_notify_severities) | flatten) }}"
+  changed_when: true
+  when: pbs_server_matcher_state in ['create', 'update']

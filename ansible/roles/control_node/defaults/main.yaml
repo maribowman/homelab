@@ -1,0 +1,70 @@
+---
+# Inventory host that is provisioned as the control LXC (IP/vmid come from its hostvars)
+control_node_inventory_host: "lxc-ansible"
+
+# LXC provisioning (Play 1, runs on localhost against the PVE API)
+control_node_lxc_template_storage: "local"
+control_node_lxc_template: "debian-13-standard_13.1-2_amd64.tar.zst"
+control_node_lxc_storage: "local-lvm"
+control_node_lxc_cores: 1
+control_node_lxc_memory: 1024
+control_node_lxc_swap: 512
+control_node_lxc_disk_gb: 8
+control_node_lxc_bridge: "vmbr0"
+control_node_lxc_vlan_tag: 40 # set to "" if the bridge is not VLAN-aware / port is untagged
+control_node_lxc_prefix: 24
+control_node_lxc_gateway: "10.0.40.1"
+control_node_lxc_nameserver: "{{ control_node_lxc_gateway }}"
+control_node_lxc_features:
+  - "nesting=1"
+# Laptop public key injected into the LXC for the first Ansible connection
+control_node_lxc_pubkey_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh/id_ed25519.pub"
+
+# System
+control_node_timezone: "Europe/Berlin"
+control_node_packages:
+  - git
+  - python3
+  - python3-venv
+  - rsync
+  - curl
+  - ca-certificates
+  - openssh-client
+  - util-linux # flock
+  - unattended-upgrades
+  - apt-listchanges
+
+# go-task (installed from the GitHub release .deb)
+control_node_task_version: "3.54.0"
+control_node_task_arch: "amd64"
+control_node_task_deb_url: "https://github.com/go-task/task/releases/download/v{{ control_node_task_version }}/task_linux_{{ control_node_task_arch }}.deb"
+
+# GitHub deploy key (read-only) used to pull repo_url
+control_node_deploy_key_path: "/root/.ssh/github_deploy_ed25519"
+control_node_github_known_host: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+control_node_repo_version: "main"
+
+# Vault files copied from the laptop into the clone (both gitignored)
+control_node_vault_src_dir: "{{ inventory_dir }}/group_vars/all"
+control_node_vault_files:
+  - "vault.yaml"
+  - ".vault.pass"
+
+# unattended-upgrades for the control node itself
+control_node_auto_reboot_time: "06:00"
+
+# systemd scheduling
+control_node_lock_file: "/run/homelab.lock"
+control_node_config_dir: "/etc/homelab"
+control_node_state_dir: "/var/lib/homelab"
+control_node_service_timeout: "6h"
+control_node_notify_journal_lines: 30
+control_node_units:
+  - homelab-maintenance.service
+  - homelab-maintenance.timer
+  - homelab-deploy.service
+  - homelab-deploy.timer
+  - homelab-notify@.service
+control_node_timers:
+  - homelab-maintenance.timer
+  - homelab-deploy.timer

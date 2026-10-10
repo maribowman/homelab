@@ -1,0 +1,26 @@
+---
+# PBS storage (id: pve_pbs_storage_id, server: pbs_host, datastore: pbs_datastore).
+# The password comes from vault (pbs_user_password), the fingerprint is read from PBS.
+pve_backup_jobs_pbs_username: "proxmox@pbs"
+pve_backup_jobs_storage_content: "backup"
+# Retention is managed by the PBS prune job only
+pve_backup_jobs_storage_prune: "keep-all=1"
+
+# vzdump job. An existing job that targets pve_pbs_storage_id is adopted whatever its id;
+# this id is only used when creating one.
+pve_backup_jobs_job_id: "backup-pbs-daily"
+pve_backup_jobs_node: "{{ pve_node }}"
+pve_backup_jobs_mode: "snapshot"
+pve_backup_jobs_compress: "zstd"
+pve_backup_jobs_notification_mode: "notification-system"
+
+# Discord webhook notification (URL comes from vault: discord_webhook_url).
+# Skipped when discord_webhook_url is undefined or empty.
+pve_backup_jobs_notify_endpoint: "discord"
+pve_backup_jobs_notify_matcher: "discord-backup-failures"
+pve_backup_jobs_notify_severities: ["error"]
+pve_backup_jobs_notify_match_fields: ["exact:type=vzdump"]
+# Handlebars template rendered by PVE (not by Ansible, hence !unsafe). The message body
+# is left out on purpose: Discord rejects content > 2000 chars and vzdump logs are longer.
+pve_backup_jobs_notify_body: !unsafe '{"content": ":rotating_light: **{{ escape title }}** (severity: {{ severity }})"}'
+pve_backup_jobs_notify_comment: "managed by ansible (pve_backup_jobs)"

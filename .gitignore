@@ -10,3 +10,7 @@
 **/.venv
 
 **/.task
+
+.claude/worktrees/
+
+plans/

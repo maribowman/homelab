@@ -1,9 +1,42 @@
+---
+# Secrets live in vault.yaml (Ansible Vault) next to this file:
+#   pve_token_secret        PVE API token secret for pve_user!pve_token_id
+#   pbs_user_password       password of proxmox@pbs (used by PVE to reach PBS)
+#   synology_cifs_password  password of the Synology user PBS mounts the share with
+#   discord_webhook_url     Discord webhook for run reports and PVE/PBS notifications
+
 # Proxmox settings
-pve_host: "192.168.0.100"
+pve_host: "10.0.10.10"
 pve_node: "pve"
 pve_user: "root@pam"
 pve_token_id: "maintenance"
 
-# Misc
-retention_days: 21
+# PBS & NAS
+pbs_host: "10.0.40.20"
+pbs_datastore: "synology-backup"
+pve_pbs_storage_id: "pbs-synology"
+nas_host: "10.0.40.10"
+nas_share: "backups"
+nas_subdir: "proxmox_backup_home"
+
+# Backup schedule & retention
+backup_schedule: "01:00"
+backup_exclude_vmids: [1001]
+pbs_keep_last: 3
+pbs_keep_weekly: 3
+pbs_keep_monthly: 3
+
+# Snapshots
+snapshot_prefix: "pre_update"
+snapshot_retention: 2
+
+# Timers (systemd OnCalendar)
+maintenance_oncalendar: "Sun *-*-* 04:00"
+deploy_oncalendar: "*-*-* 05:00"
+
+# Control node
+repo_url: "git@github.com:maribowman/homelab.git"
+control_repo_path: "/opt/homelab"
+
+# Docker
 dockge_stacks_path: "/opt/stacks"

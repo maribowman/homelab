@@ -1,0 +1,3 @@
+---
+# Seconds to wait for the PVE snapshot task to finish
+snapshot_proxmox_machines_timeout: 300

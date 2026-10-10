@@ -1,0 +1,30 @@
+---
+# Runs on the control node: create its root SSH key and authorize it on every managed host.
+- name: Ensure /root/.ssh exists
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate control node SSH key
+  ansible.builtin.command:
+    cmd: >-
+      ssh-keygen -q -t ed25519 -N ""
+      -C "{{ ssh_access_key_comment }}"
+      -f {{ ssh_access_key_path }}
+    creates: "{{ ssh_access_key_path }}"
+
+- name: Read control node public key
+  ansible.builtin.slurp:
+    src: "{{ ssh_access_key_path }}.pub"
+  register: _ssh_access_pubkey
+
+- name: Authorize control node key on managed hosts
+  ansible.posix.authorized_key:
+    user: "{{ ssh_access_target_user }}"
+    key: "{{ _ssh_access_pubkey.content | b64decode | trim }}"
+    state: present
+  delegate_to: "{{ item }}"
+  loop: "{{ ssh_access_target_hosts }}"

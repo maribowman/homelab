@@ -1,0 +1,100 @@
+---
+# Runs per guest (all API calls on localhost) and never fails the play: problems are
+# collected into one Discord `warn` and the run continues.
+#
+# Backups are checked on the storage, not per task: a scheduled job backing up several
+# guests creates a single vzdump task without a vmid, so filtering tasks by vmid misses it.
+
+- name: Mark guests excluded from backups
+  ansible.builtin.set_fact:
+    preflight_backup_check_status: excluded
+  when: (vmid | int) in (backup_exclude_vmids | map('int'))
+
+- name: Check the newest backup of this guest
+  when: preflight_backup_check_status | default('') != 'excluded'
+  delegate_to: localhost
+  become: false
+  block:
+    - name: List backups of this guest
+      ansible.builtin.uri:
+        url: "{{ preflight_backup_check_api_url }}/nodes/{{ pve_node }}/storage/{{ preflight_backup_check_storage }}/content?content=backup&vmid={{ vmid }}"
+        headers:
+          Authorization: "PVEAPIToken={{ pve_user }}!{{ pve_token_id }}={{ pve_token_secret }}"
+        validate_certs: "{{ preflight_backup_check_validate_certs }}"
+        timeout: 30
+      register: preflight_backup_check_content
+      check_mode: false
+      no_log: true
+
+    - name: Pick the newest backup
+      ansible.builtin.set_fact:
+        preflight_backup_check_newest: "{{ preflight_backup_check_content.json.data | sort(attribute='ctime') | last | default({}) }}"
+
+    - name: Rate the newest backup
+      ansible.builtin.set_fact:
+        preflight_backup_check_age_hours: >-
+          {{ (((now().timestamp() - (preflight_backup_check_newest.ctime | default(0) | int)) / 3600) | round(1))
+             if preflight_backup_check_newest else -1 }}
+        preflight_backup_check_status: >-
+          {%- if not preflight_backup_check_newest -%}missing
+          {%- elif (preflight_backup_check_newest.verification.state | default('')) == 'failed' -%}verify_failed
+          {%- elif (now().timestamp() - (preflight_backup_check_newest.ctime | int)) > (preflight_backup_check_max_age_hours * 3600) -%}stale
+          {%- else -%}ok
+          {%- endif -%}
+
+    - name: Describe the backup state
+      ansible.builtin.set_fact:
+        preflight_backup_check_summary: >-
+          {{ inventory_hostname }} ({{ vmid }}): {{ preflight_backup_check_status }}{{
+             (', newest backup ' ~ preflight_backup_check_age_hours ~ 'h old') if preflight_backup_check_newest else '' }}
+  rescue:
+    - name: Record failed lookup
+      ansible.builtin.set_fact:
+        preflight_backup_check_status: unknown
+        preflight_backup_check_summary: >-
+          {{ inventory_hostname }} ({{ vmid }}): backup lookup failed (storage
+          {{ preflight_backup_check_storage }} missing, PVE API unreachable or token lacks Datastore.Audit)
+
+- name: Check the newest backup job run
+  run_once: true
+  delegate_to: localhost
+  become: false
+  block:
+    - name: List the newest vzdump task
+      ansible.builtin.uri:
+        url: "{{ preflight_backup_check_api_url }}/nodes/{{ pve_node }}/tasks?typefilter=vzdump&limit=1"
+        headers:
+          Authorization: "PVEAPIToken={{ pve_user }}!{{ pve_token_id }}={{ pve_token_secret }}"
+        validate_certs: "{{ preflight_backup_check_validate_certs }}"
+        timeout: 30
+      register: preflight_backup_check_tasks
+      check_mode: false
+      no_log: true
+
+    - name: Read the job status
+      ansible.builtin.set_fact:
+        preflight_backup_check_job_status: "{{ (preflight_backup_check_tasks.json.data | first | default({})).status | default('missing') }}"
+  rescue:
+    - name: Record failed job lookup
+      ansible.builtin.set_fact:
+        preflight_backup_check_job_status: unknown
+
+- name: Collect backup problems
+  ansible.builtin.set_fact:
+    preflight_backup_check_problems: >-
+      {{ (ansible_play_hosts | map('extract', hostvars)
+          | rejectattr('preflight_backup_check_status', 'in', ['ok', 'excluded'])
+          | map(attribute='preflight_backup_check_summary') | list)
+         + ([] if preflight_backup_check_job_status == 'OK'
+            else ['newest vzdump task: ' ~ preflight_backup_check_job_status]) }}
+  run_once: true
+
+- name: Warn about backup problems
+  ansible.builtin.include_role:
+    name: notify_discord
+  vars:
+    notify_title: "Maintenance preflight: backups"
+    notify_message: "{{ (preflight_backup_check_problems + ['Continuing with updates.']) | join('\n') }}"
+    notify_level: warn
+  when: preflight_backup_check_problems | length > 0
+  run_once: true

@@ -1,4 +1,9 @@
 ---
+# Freeze the name once, so every later reference (e.g. the rollback hint) sees the same value
+- name: Set snapshot name
+  ansible.builtin.set_fact:
+    snapshot_proxmox_machines_snapname: "{{ snapshot_prefix }}_{{ now().strftime('%Y%m%d_%H%M') }}"
+
 - name: Create machine snapshot
   community.proxmox.proxmox_snap:
     api_host: "{{ pve_host }}"
@@ -7,7 +12,9 @@
     api_token_secret: "{{ pve_token_secret }}"
     vmid: "{{ vmid }}"
     state: present
-    snapname: "pre_update_{{ ansible_facts['date_time']['date'] }}"
-    retention: 2
+    snapname: "{{ snapshot_proxmox_machines_snapname }}"
+    description: "Created by Ansible before OS updates"
+    retention: "{{ snapshot_retention }}"
+    timeout: "{{ snapshot_proxmox_machines_timeout }}"
   delegate_to: localhost
   become: false

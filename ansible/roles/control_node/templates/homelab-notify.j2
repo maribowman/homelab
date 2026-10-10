@@ -1,0 +1,34 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Usage: homelab-notify <unit>
+# Posts the last journal lines of <unit> to Discord. Never fails the caller.
+set -u
+
+unit="${1:?usage: homelab-notify <unit>}"
+
+if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+    echo "DISCORD_WEBHOOK_URL not set, skipping notification for ${unit}"
+    exit 0
+fi
+
+logs="$(journalctl -u "$unit" -n {{ control_node_notify_journal_lines }} --no-pager -o cat 2>&1)"
+
+# shellcheck disable=SC2016 # python source, expansion not wanted
+payload="$(UNIT="$unit" HOST="$(hostname)" LOGS="$logs" python3 -c '
+import json, os
+logs = os.environ["LOGS"][-3800:]
+print(json.dumps({
+    "username": "homelab",
+    "embeds": [{
+        "title": "Failed: " + os.environ["UNIT"],
+        "description": "```\n" + logs + "\n```",
+        "color": 0xE74C3C,
+        "footer": {"text": os.environ["HOST"]},
+    }],
+}))
+')"
+
+curl -fsS --max-time 15 -H "Content-Type: application/json" \
+    -d "$payload" "$DISCORD_WEBHOOK_URL" >/dev/null \
+    || echo "Discord notification for ${unit} failed"
+exit 0

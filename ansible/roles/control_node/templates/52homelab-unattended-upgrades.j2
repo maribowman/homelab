@@ -1,0 +1,6 @@
+// {{ ansible_managed }}
+// Self-updates of the control node; reboots outside the maintenance/deploy windows.
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ control_node_auto_reboot_time }}";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";

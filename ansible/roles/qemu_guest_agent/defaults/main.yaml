@@ -1,0 +1,2 @@
+---
+qemu_guest_agent_port: "/dev/virtio-ports/org.qemu.guest_agent.0"

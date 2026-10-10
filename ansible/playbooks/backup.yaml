@@ -1,0 +1,22 @@
+---
+# Order matters: PBS (datastore, user) must exist before PVE adds it as storage.
+- name: Configure Proxmox Backup Server
+  hosts: pbs_hosts
+  become: true
+
+  roles:
+    - role: pbs_server
+
+- name: Configure PVE backup storage and jobs
+  hosts: proxmox_hosts
+  become: true
+
+  roles:
+    - role: pve_backup_jobs
+
+- name: Install QEMU guest agent on VMs
+  hosts: ubuntu_nodes
+  become: true
+
+  roles:
+    - role: qemu_guest_agent

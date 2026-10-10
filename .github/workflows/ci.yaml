@@ -1,0 +1,114 @@
+---
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ansible:
+    name: Lint & syntax-check
+    runs-on: ubuntu-latest
+    env:
+      ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles
+      ANSIBLE_FORCE_COLOR: "1"
+      PY_COLORS: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ansible/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ansible/requirements.txt ansible-lint yamllint
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r ansible/requirements.yaml
+
+      # The real vault is gitignored: provide an unencrypted stub with the
+      # contract keys and a dummy password file so nothing needs secrets.
+      # An empty discord_webhook_url makes notify_discord skip.
+      - name: Create stub vault
+        run: |
+          vault_dir=ansible/inventory/group_vars/all
+          echo "ci-dummy-password" > "$vault_dir/.vault.pass"
+          {
+            echo "---"
+            echo 'pve_token_secret: "ci-dummy"'
+            echo 'pbs_user_password: "ci-dummy"'
+            echo 'synology_cifs_password: "ci-dummy"'
+            echo 'discord_webhook_url: ""'
+          } > "$vault_dir/vault.yaml"
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+      - name: Syntax-check playbooks
+        working-directory: ansible
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          playbooks=(playbooks/*.yaml)
+          if [ "${#playbooks[@]}" -eq 0 ]; then
+            echo "::error::no playbooks found in ansible/playbooks"
+            exit 1
+          fi
+          for pb in "${playbooks[@]}"; do
+            echo "::group::$pb"
+            ansible-playbook --syntax-check \
+              --vault-password-file inventory/group_vars/all/.vault.pass \
+              "$pb"
+            echo "::endgroup::"
+          done
+
+  compose:
+    name: Compose config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate compose files
+        env:
+          # Stub values for the required variables from the gitignored .env files
+          GF_SECURITY_ADMIN_PASSWORD: ci
+          POSTGRES_PASSWORD: ci
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          status=0
+          for dir in docker/stacks/*/ docker/dockge/; do
+            file=""
+            for name in compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
+              if [ -f "$dir$name" ]; then file="$dir$name"; break; fi
+            done
+            if [ -z "$file" ]; then
+              echo "::warning::no compose file in $dir"
+              continue
+            fi
+            echo "Checking $file"
+            if ! docker compose -f "$file" config -q; then
+              echo "::error file=$file::docker compose config failed"
+              status=1
+            fi
+          done
+          exit "$status"

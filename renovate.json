@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["docker-compose", "github-actions"],
+  "schedule": ["every weekend"],
+  "pinDigests": true,
+  "packageRules": [
+    {
+      "description": "Automerge minor, patch and digest updates once CI is green",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "automerge": true
+    },
+    {
+      "description": "Group the Grafana stack images",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["grafana/**"],
+      "groupName": "grafana"
+    },
+    {
+      "description": "Group the Prometheus images",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["prom/**"],
+      "groupName": "prometheus"
+    },
+    {
+      "description": "Major updates always need a manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["needs-review"]
+    },
+    {
+      "description": "TimescaleDB is used by Scribe on Home Assistant: only open a PR once it is approved in the Dependency Dashboard",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["timescale/timescaledb-ha"],
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "addLabels": ["needs-review"]
+    }
+  ]
+}

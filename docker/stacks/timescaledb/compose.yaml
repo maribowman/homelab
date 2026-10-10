@@ -1,20 +1,22 @@
 services:
   timescaledb:
-    image: timescale/timescaledb-ha:pg18
+    image: timescale/timescaledb-ha:pg18@sha256:7d352e92884862549363b96d2b791c31fcd941e570308780890b27ae1449c829 # must match the running image; bump only when Scribe supports it
     container_name: timescaledb
     restart: unless-stopped
     ports:
+      # Bound to all interfaces on purpose: Home Assistant connects over the LAN.
+      # Accepted exposure for a trusted LAN-only homelab.
       - 5432:5432
     environment:
       - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in docker/stacks/timescaledb/.env}
       - POSTGRES_DB=postgres
     volumes:
       - timescaledb-data:/home/postgres/pgdata
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U admin
+        - pg_isready -U admin -d postgres
       interval: 60s
       timeout: 5s
       retries: 5

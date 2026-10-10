@@ -7,16 +7,42 @@ tasks:
     deps: [":init"]
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
-      --vault-password-file "{{.VAULT_PWD_FILE}}"
+      --vault-password-file "{{.VAULT_PWD_FILE}}" {{.CLI_ARGS}}
 
-  syntax:
-    desc: "Check Proxmox playbook"
+  check:
+    desc: "Dry-run Proxmox machine updates (--check --diff)"
     silent: true
     deps: [":init"]
-    cmd: '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check'
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" --check --diff {{.CLI_ARGS}}
+
+  rollback:
+    desc: "Roll a guest back to its newest pre-update snapshot"
+    silent: true
+    deps: [":init"]
+    prompt: "Roll {{.HOST}} back to its newest pre-update snapshot? Changes since then are lost."
+    requires:
+      vars: [HOST]
+    vars:
+      ROLLBACK_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "rollback.yaml"}}'
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.ROLLBACK_PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      --extra-vars "target={{.HOST}}" {{.CLI_ARGS}}
+
+  syntax:
+    desc: "Check Proxmox playbooks"
+    silent: true
+    deps: [":init"]
+    vars:
+      ROLLBACK_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "rollback.yaml"}}'
+    cmds:
+      - '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
+      - '"{{.VENV}}/bin/ansible-playbook" "{{.ROLLBACK_PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
 
   ping:
     desc: "Test the SSH connection to all Proxmox machines"
     silent: true
     deps: [":init"]
-    cmd: '"{{.VENV}}/bin/ansible" all --vault-password-file "{{.VAULT_PWD_FILE}}" -m ping'
+    cmd: '"{{.VENV}}/bin/ansible" all --vault-password-file "{{.VAULT_PWD_FILE}}" -m ping {{.CLI_ARGS}}'

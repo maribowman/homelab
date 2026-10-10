@@ -1,0 +1,55 @@
+---
+- name: Read datastores
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, datastore, list, --output-format, json]
+  register: pbs_server_datastore_list
+  changed_when: false
+  check_mode: false
+
+- name: Compare datastore with desired config
+  vars:
+    pbs_server_cur: "{{ pbs_server_datastore_list.stdout | from_json | selectattr('name', 'equalto', pbs_datastore) | first | default(none) }}"
+  ansible.builtin.set_fact:
+    pbs_server_datastore_current: "{{ pbs_server_cur }}"
+    pbs_server_datastore_diff: >-
+      {%- set ns = namespace(keys=[]) -%}
+      {%- for k, v in pbs_server_datastore_desired.items() -%}
+      {%- if ((pbs_server_cur or {})[k] | default('') | string | lower) != (v | string | lower) -%}
+      {%- set ns.keys = ns.keys + [k] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ ns.keys }}
+
+- name: Assert existing datastore points at the Synology subdir
+  ansible.builtin.assert:
+    that:
+      - pbs_server_datastore_current.path == pbs_server_datastore_path
+    fail_msg: >-
+      Datastore {{ pbs_datastore }} uses path {{ pbs_server_datastore_current.path }},
+      expected {{ pbs_server_datastore_path }}. A datastore path cannot be changed in place.
+    quiet: true
+  when: pbs_server_datastore_current is not none
+
+- name: Check for an existing chunk store at the datastore path
+  ansible.builtin.stat:
+    path: "{{ pbs_server_datastore_path }}/.chunks"
+  register: pbs_server_chunk_dir
+  when: pbs_server_datastore_current is none
+
+# --reuse-datastore (PBS >= 3.3) re-attaches existing chunks instead of failing
+- name: Create datastore
+  ansible.builtin.command:
+    argv: "{{ [
+      'proxmox-backup-manager', 'datastore', 'create', pbs_datastore, pbs_server_datastore_path]
+      + pbs_server_datastore_opts
+      + (['--reuse-datastore', 'true'] if pbs_server_chunk_dir.stat.exists | default(false) else []) }}"
+  changed_when: true
+  when: pbs_server_datastore_current is none
+
+- name: Update datastore options
+  ansible.builtin.command:
+    argv: "{{ ['proxmox-backup-manager', 'datastore', 'update', pbs_datastore] + pbs_server_datastore_opts }}"
+  changed_when: true
+  when:
+    - pbs_server_datastore_current is not none
+    - pbs_server_datastore_diff | length > 0

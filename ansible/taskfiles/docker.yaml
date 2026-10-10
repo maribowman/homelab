@@ -2,13 +2,13 @@ version: "3"
 
 tasks:
   deploy:
-    desc: "Copy docker stacks to the docker VM and deploy"
+    desc: "Copy docker stacks to the docker VM, pull images and deploy"
     silent: true
     deps: [":init"]
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
       --vault-password-file "{{.VAULT_PWD_FILE}}" \
-      --extra-vars "docker_state=up"
+      --extra-vars "docker_state=pull" {{.CLI_ARGS}}
 
   restart:
     desc: "Restart a single docker stack on the docker VM"
@@ -17,8 +17,8 @@ tasks:
     requires:
       vars:
         - name: STACK
-          enum: [observability, roastbeef-swag, ha-timescaledb]
+          enum: [observability, roastbeef-swag, timescaledb]
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
       --vault-password-file "{{.VAULT_PWD_FILE}}" \
-      --extra-vars "target_stack={{.STACK}}"
+      --extra-vars "target_stack={{.STACK}}" {{.CLI_ARGS}}

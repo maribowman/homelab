@@ -1,0 +1,25 @@
+version: "3"
+
+tasks:
+  apply:
+    desc: "Configure PBS (datastore, jobs, notifications) and the PVE backup storage/job"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" {{.CLI_ARGS}}
+
+  check:
+    desc: "Dry-run the backup playbook and show the diff"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      --check --diff {{.CLI_ARGS}}
+
+  syntax:
+    desc: "Check backup playbook"
+    silent: true
+    deps: [":init"]
+    cmd: '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'

@@ -1,0 +1,23 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Pull the repo; redeploy docker stacks when HEAD differs from the last
+# successfully deployed commit (so a failed deploy is retried on the next run).
+# Set HOMELAB_DEPLOY_FORCE=1 to deploy regardless.
+set -eu
+
+state_file="{{ control_node_state_dir }}/deployed-sha"
+
+cd "{{ control_repo_path }}"
+git pull --ff-only
+
+head="$(git rev-parse HEAD)"
+deployed="$(cat "$state_file" 2>/dev/null || true)"
+
+if [ "$head" = "$deployed" ] && [ "${HOMELAB_DEPLOY_FORCE:-0}" != "1" ]; then
+    echo "HEAD ${head} already deployed, nothing to do"
+    exit 0
+fi
+
+echo "Deploying ${deployed:-<none>} -> ${head}"
+task ansible:docker:deploy -- -e sync_pull_remote=false
+printf '%s\n' "$head" > "$state_file"

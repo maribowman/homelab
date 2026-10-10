@@ -1,0 +1,14 @@
+---
+# Public interface (see plans/update-and-automation.md, "Shared contracts")
+notify_title: "Homelab"
+notify_message: ""
+notify_level: info # info | warn | error
+notify_run_once: false # true: send once per play batch instead of once per host
+
+# Role internals
+notify_discord_username: "Homelab"
+notify_discord_timeout: 10
+notify_discord_colors:
+  info: 3066993 # 0x2ECC71 green
+  warn: 16760576 # 0xFFBF00 amber
+  error: 15158332 # 0xE74C3C red

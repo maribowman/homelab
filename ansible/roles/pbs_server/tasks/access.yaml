@@ -1,0 +1,58 @@
+---
+# The password is only set when the user is created. PBS does not expose password
+# hashes, so a changed pbs_user_password must be applied by hand (or by deleting the user).
+- name: Read PBS users
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, user, list, --output-format, json]
+  register: pbs_server_user_list
+  changed_when: false
+  check_mode: false
+
+- name: Read PBS ACLs
+  ansible.builtin.command:
+    argv: [proxmox-backup-manager, acl, list, --output-format, json]
+  register: pbs_server_acl_list
+  changed_when: false
+  check_mode: false
+
+- name: Evaluate user and ACL state
+  ansible.builtin.set_fact:
+    pbs_server_user_exists: >-
+      {{ pbs_server_user_list.stdout | from_json | selectattr('userid', 'equalto', pbs_server_pve_user) | list | length > 0 }}
+    pbs_server_acl_ok: >-
+      {{ pbs_server_acl_list.stdout | from_json
+         | selectattr('path', 'equalto', pbs_server_pve_user_acl_path)
+         | selectattr('ugid', 'equalto', pbs_server_pve_user)
+         | selectattr('roleid', 'equalto', pbs_server_pve_user_role)
+         | selectattr('propagate')
+         | list | length > 0 }}
+
+- name: Create PBS user for PVE
+  ansible.builtin.command:
+    argv:
+      - proxmox-backup-manager
+      - user
+      - create
+      - "{{ pbs_server_pve_user }}"
+      - --password
+      - "{{ pbs_user_password }}"
+      - --comment
+      - "PVE backup storage (managed by ansible)"
+  changed_when: true
+  no_log: true
+  when: not pbs_server_user_exists
+
+- name: Grant datastore role to PBS user
+  ansible.builtin.command:
+    argv:
+      - proxmox-backup-manager
+      - acl
+      - update
+      - "{{ pbs_server_pve_user_acl_path }}"
+      - "{{ pbs_server_pve_user_role }}"
+      - --auth-id
+      - "{{ pbs_server_pve_user }}"
+      - --propagate
+      - "true"
+  changed_when: true
+  when: not pbs_server_acl_ok

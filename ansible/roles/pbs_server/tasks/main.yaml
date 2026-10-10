@@ -1,0 +1,44 @@
+---
+# Idempotency pattern used throughout this role:
+#   1. read the current config with `proxmox-backup-manager ... list --output-format json`
+#      (read-only, so it also runs in check mode),
+#   2. compare it with the desired options (values are compared as lower-case strings),
+#   3. run `create` when the object is missing, `update` only when an option differs.
+# In check mode the create/update commands are reported as skipped, and a summary of
+# pending changes is printed at the end.
+
+- name: Assert required vault vars are defined
+  ansible.builtin.assert:
+    that:
+      - synology_cifs_password is defined
+      - pbs_user_password is defined
+    fail_msg: "synology_cifs_password and pbs_user_password must be set in vault.yaml"
+    quiet: true
+
+- name: Mount the Synology share
+  ansible.builtin.import_tasks: mount.yaml
+
+- name: Configure the datastore
+  ansible.builtin.import_tasks: datastore.yaml
+
+- name: Configure the PVE user and its ACL
+  ansible.builtin.import_tasks: access.yaml
+
+- name: Configure prune and verify jobs
+  ansible.builtin.import_tasks: jobs.yaml
+
+- name: Configure the Discord notification
+  ansible.builtin.import_tasks: notifications.yaml
+  when: (discord_webhook_url | default('')) | length > 0
+
+- name: Show pending changes (check mode)
+  ansible.builtin.debug:
+    msg:
+      datastore: "{{ 'create' if pbs_server_datastore_current is none else pbs_server_datastore_diff }}"
+      user: "{{ 'create' if not pbs_server_user_exists else 'ok' }}"
+      acl: "{{ 'update' if not pbs_server_acl_ok else 'ok' }}"
+      prune_job: "{{ 'create' if pbs_server_prune_current is none else pbs_server_prune_diff }}"
+      verify_job: "{{ 'create' if pbs_server_verify_current is none else pbs_server_verify_diff }}"
+      notify_endpoint: "{{ pbs_server_endpoint_state | default('skipped') }}"
+      notify_matcher: "{{ pbs_server_matcher_state | default('skipped') }}"
+  when: ansible_check_mode
