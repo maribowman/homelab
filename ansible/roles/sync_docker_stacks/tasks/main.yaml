@@ -6,8 +6,22 @@
     recursive: true
     rsync_opts:
       - "--exclude=data"
-      # Secrets live only on the host: never overwrite or pull them
+      # .env files are written from the vault below, never copied from a working tree
       - "--exclude=.env"
+
+# Only stacks listed in docker_stack_env are managed; any other .env is left alone
+- name: Write stack .env files from the vault
+  ansible.builtin.template:
+    src: stack.env.j2
+    dest: "{{ dockge_stacks_path }}/{{ item.key }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ docker_stack_env | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  diff: false
 
 - name: Pull remote-only stacks to local git
   ansible.posix.synchronize:

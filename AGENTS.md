@@ -52,7 +52,7 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 ### Ansible
 
 - Venv lives at `ansible/.venv`; all ansible binaries must be invoked via that venv (the Taskfile handles this automatically).
-- Secrets are stored in `ansible/inventory/group_vars/all/vault.yaml` (Ansible Vault). The vault password file is expected at `ansible/inventory/group_vars/all/.vault.pass` (gitignored, must be provisioned locally). Vault keys: `pve_token_secret`, `pbs_user_password` (`proxmox@pbs`), `synology_cifs_password`, `discord_webhook_url`.
+- Secrets are stored in `ansible/inventory/group_vars/all/vault.yaml` (Ansible Vault). The vault password file is expected at `ansible/inventory/group_vars/all/.vault.pass` (gitignored, must be provisioned locally). Vault keys: `pve_token_secret`, `pbs_user_password` (`proxmox@pbs`), `synology_cifs_password`, `discord_webhook_url`, and `docker_stack_env` (per-stack `.env` contents, e.g. `observability: {GF_SECURITY_ADMIN_PASSWORD: …}`, `timescaledb: {POSTGRES_PASSWORD: …}`). After a vault change, run `control:apply` again so the control node gets the new copy.
 - Inventory groups (`ansible/inventory/hosts.ini`): `proxmox_hosts`, `pbs_hosts`, `ubuntu_nodes`, `debian_nodes`, `docker_hosts`, `control_nodes`, and `guests` (= ubuntu + debian + pbs). Every host except `pve` has a `vmid`. `control_nodes` is deliberately not in `guests`; it updates itself via unattended-upgrades.
 - Shared vars are in `ansible/inventory/group_vars/all/vars.yaml`: Proxmox API details, PBS/NAS addresses, backup schedule and retention, snapshot prefix/retention, timer `OnCalendar` values, control-node repo settings, `dockge_stacks_path` (`/opt/stacks` on DockerVM). Role-specific vars live in each role's `defaults/main.yaml`, prefixed with the role name.
 - Collections used: `community.proxmox`, `community.general`, `ansible.posix`.
@@ -72,7 +72,7 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 
 | Role | What it does |
 |------|-------------|
-| `sync_docker_stacks` | Rsync `docker/stacks/` (local) → `/opt/stacks` (DockerVM), excluding `data/` and `.env` (secrets stay on the host). Pull-back of remote-only stacks excludes `dockge/`, `data/` and `.env`, gated by `sync_pull_remote` (default `true`; the control node sets it `false`). |
+| `sync_docker_stacks` | Rsync `docker/stacks/` (local) → `/opt/stacks` (DockerVM), excluding `data/` and `.env`. Then writes `/opt/stacks/<stack>/.env` (0600) for each stack in the vault dict `docker_stack_env`; stacks not listed keep their `.env` untouched. Pull-back of remote-only stacks excludes `dockge/`, `data/` and `.env`, gated by `sync_pull_remote` (default `true`; the control node sets it `false`). |
 | `deploy_docker_stacks` | Runs `docker compose` per stack under `dockge_stacks_path` (skips `dockge`). `docker_state`: `up`, `down`, `restart`, `pull` (pull + `up -d --remove-orphans` + health) or `health` (wait until every container is running/healthy). `target_stack` (`""` = all). Failures → one Discord error, then fail. |
 | `snapshot_proxmox_machines` | Snapshot `{{ snapshot_prefix }}_YYYYMMDD_HHMM` via the PVE API, keeps `snapshot_retention`. |
 | `update_proxmox_machines` | `apt dist-upgrade` + autoremove, reboots if `/var/run/reboot-required` exists, records package count. |
