@@ -1,0 +1,42 @@
+---
+# Desired option sets, keyed by the parameter names pvesh uses both as CLI flags
+# (--<key>) and in its JSON output. The *_opts lists are the matching CLI args.
+pve_backup_jobs_storage_desired:
+  server: "{{ pbs_host }}"
+  username: "{{ pve_backup_jobs_pbs_username }}"
+  fingerprint: "{{ pve_backup_jobs_fingerprint | default('') }}"
+  content: "{{ pve_backup_jobs_storage_content }}"
+  prune-backups: "{{ pve_backup_jobs_storage_prune }}"
+
+pve_backup_jobs_job_desired:
+  schedule: "{{ backup_schedule }}"
+  storage: "{{ pve_pbs_storage_id }}"
+  node: "{{ pve_backup_jobs_node }}"
+  mode: "{{ pve_backup_jobs_mode }}"
+  compress: "{{ pve_backup_jobs_compress }}"
+  all: 1
+  exclude: "{{ backup_exclude_vmids | join(',') }}"
+  enabled: 1
+  notification-mode: "{{ pve_backup_jobs_notification_mode }}"
+
+# Values PVE leaves out of its JSON output when they are at their default
+pve_backup_jobs_job_implicit:
+  enabled: 1
+
+pve_backup_jobs_storage_opts: >-
+  {%- set ns = namespace(a=[]) -%}
+  {%- for k, v in pve_backup_jobs_storage_desired.items() -%}
+  {%- set ns.a = ns.a + ['--' ~ k, v | string] -%}
+  {%- endfor -%}
+  {{ ns.a }}
+
+pve_backup_jobs_job_opts: >-
+  {%- set ns = namespace(a=[]) -%}
+  {%- for k, v in pve_backup_jobs_job_desired.items() -%}
+  {%- set ns.a = ns.a + ['--' ~ k, v | string] -%}
+  {%- endfor -%}
+  {{ ns.a }}
+
+# Webhook header/body as PVE stores them (base64-encoded values)
+pve_backup_jobs_notify_header: "name=Content-Type,value={{ 'application/json' | b64encode }}"
+pve_backup_jobs_notify_body_b64: "{{ pve_backup_jobs_notify_body | b64encode }}"

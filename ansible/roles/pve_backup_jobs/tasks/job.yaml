@@ -1,0 +1,53 @@
+---
+- name: Read backup jobs
+  ansible.builtin.command:
+    argv: [pvesh, get, /cluster/backup, --output-format, json]
+  register: pve_backup_jobs_job_list
+  changed_when: false
+  check_mode: false
+
+- name: Compare vzdump job with desired config
+  vars:
+    pve_backup_jobs_found: "{{ pve_backup_jobs_job_list.stdout | from_json | selectattr('storage', 'equalto', pve_pbs_storage_id) | list }}"
+    pve_backup_jobs_cur: >-
+      {{ (pve_backup_jobs_job_implicit | combine(pve_backup_jobs_found | first))
+         if pve_backup_jobs_found | length > 0 else none }}
+  ansible.builtin.set_fact:
+    pve_backup_jobs_job_count: "{{ pve_backup_jobs_found | length }}"
+    pve_backup_jobs_job_current: "{{ pve_backup_jobs_cur }}"
+    pve_backup_jobs_job_diff: >-
+      {%- set ns = namespace(keys=[]) -%}
+      {%- for k, v in pve_backup_jobs_job_desired.items() -%}
+      {%- if ((pve_backup_jobs_cur or {})[k] | default('') | string | lower) != (v | string | lower) -%}
+      {%- set ns.keys = ns.keys + [k] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- if pve_backup_jobs_cur and ('vmid' in pve_backup_jobs_cur or 'pool' in pve_backup_jobs_cur) -%}
+      {%- set ns.keys = ns.keys + ['selection'] -%}
+      {%- endif -%}
+      {{ ns.keys }}
+
+- name: Assert there is at most one job for the PBS storage
+  ansible.builtin.assert:
+    that:
+      - pve_backup_jobs_job_count | int <= 1
+    fail_msg: "More than one backup job targets {{ pve_pbs_storage_id }}; remove the extra ones by hand."
+    quiet: true
+
+- name: Create vzdump job
+  ansible.builtin.command:
+    argv: "{{ ['pvesh', 'create', '/cluster/backup', '--id', pve_backup_jobs_job_id] + pve_backup_jobs_job_opts }}"
+  changed_when: true
+  when: pve_backup_jobs_job_current is none
+
+# A job switched from "include selected" to "all except" must drop its vmid/pool list
+- name: Update vzdump job
+  ansible.builtin.command:
+    argv: >-
+      {{ ['pvesh', 'set', '/cluster/backup/' ~ pve_backup_jobs_job_current.id]
+         + pve_backup_jobs_job_opts
+         + (['--delete', 'vmid,pool'] if 'selection' in pve_backup_jobs_job_diff else []) }}
+  changed_when: true
+  when:
+    - pve_backup_jobs_job_current is not none
+    - pve_backup_jobs_job_diff | length > 0

@@ -1,0 +1,32 @@
+---
+# Same idempotency pattern as pbs_server: read with `pvesh get ... --output-format json`
+# (read-only, runs in check mode), compare with the desired options as strings, then
+# `pvesh create` when missing or `pvesh set` only when an option differs.
+
+- name: Assert required vault vars are defined
+  ansible.builtin.assert:
+    that:
+      - pbs_user_password is defined
+    fail_msg: "pbs_user_password must be set in vault.yaml"
+    quiet: true
+
+- name: Configure the PBS storage
+  ansible.builtin.import_tasks: storage.yaml
+
+- name: Configure the vzdump job
+  ansible.builtin.import_tasks: job.yaml
+
+- name: Configure the Discord notification
+  ansible.builtin.import_tasks: notifications.yaml
+  when: (discord_webhook_url | default('')) | length > 0
+
+- name: Show pending changes (check mode)
+  ansible.builtin.debug:
+    msg:
+      storage: >-
+        {{ 'create' if pve_backup_jobs_storage_current is none
+           else pve_backup_jobs_storage_diff + (['password'] if pve_backup_jobs_password_changed else []) }}
+      vzdump_job: "{{ 'create' if pve_backup_jobs_job_current is none else pve_backup_jobs_job_diff }}"
+      notify_endpoint: "{{ pve_backup_jobs_endpoint_state | default('skipped') }}"
+      notify_matcher: "{{ pve_backup_jobs_matcher_state | default('skipped') }}"
+  when: ansible_check_mode
