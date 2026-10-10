@@ -1,7 +1,54 @@
 ---
-# Stub: replaced by the real webhook implementation (workstream E)
-- name: Notify Discord (stub)
+# Posts one embed to the Discord webhook in `discord_webhook_url` (vault).
+# Always runs on localhost and never fails the play: delivery errors are
+# only reported as a debug message.
+
+- name: Skip Discord notification (discord_webhook_url not set)
   ansible.builtin.debug:
-    msg: "[{{ notify_level }}] {{ notify_title }}: {{ notify_message }}"
+    msg: "discord_webhook_url not set, skipping: [{{ notify_level }}] {{ notify_title }}: {{ notify_message }}"
+  when: discord_webhook_url | default('', true) | length == 0
+
+- name: Send Discord notification
+  when:
+    - discord_webhook_url | default('', true) | length > 0
+    - not (notify_run_once | bool) or inventory_hostname == (ansible_play_batch | default([inventory_hostname]) | first)
   delegate_to: localhost
   become: false
+  block:
+    - name: Post embed to Discord webhook
+      ansible.builtin.uri:
+        url: "{{ discord_webhook_url }}"
+        method: POST
+        body_format: json
+        status_code: [200, 204]
+        timeout: "{{ notify_discord_timeout }}"
+        body:
+          username: "{{ notify_discord_username }}"
+          allowed_mentions:
+            parse: []
+          embeds:
+            - title: "{{ notify_title | string | truncate(256, true, '...') }}"
+              description: "{{ (notify_message | string | truncate(4000, true, '...')) or '-' }}"
+              color: "{{ notify_discord_colors[notify_level] | default(notify_discord_colors['info']) | int }}"
+              footer:
+                text: "{{ (notify_level | upper) ~ ' | ' ~ inventory_hostname ~ ' | ' ~ (ansible_play_name | default('ad-hoc')) }}"
+              timestamp: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+      register: notify_discord_result
+      failed_when: false
+      changed_when: false
+      no_log: true
+
+    - name: Report failed Discord delivery
+      ansible.builtin.debug:
+        msg: >-
+          Discord notification '{{ notify_title }}' not delivered
+          (status {{ notify_discord_result.status | default('n/a') }}):
+          {{ notify_discord_result.msg | default('') | replace(discord_webhook_url, '<webhook>') }}
+      when:
+        - not (notify_discord_result.skipped | default(false))
+        - notify_discord_result.status | default(-1) | int not in [200, 204]
+
+  rescue:
+    - name: Report Discord notification error
+      ansible.builtin.debug:
+        msg: "Discord notification '{{ notify_title }}' could not be sent (ignored)"
