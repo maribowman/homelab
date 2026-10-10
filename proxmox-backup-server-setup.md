@@ -121,7 +121,7 @@ In PVE: **Datacenter → Storage → Add → Proxmox Backup Server**
 | Field            | Value                             |
 | ---------------- | --------------------------------- |
 | ID               | `pbs-synology`                    |
-| Server           | `192.168.0.101`                   |
+| Server           | `10.0.40.20`                   |
 | Username         | `proxmox@pbs`                     |
 | Datastore        | `synology-backup`                 |
 | Fingerprint      | _(output from above command)_     |

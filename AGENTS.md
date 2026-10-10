@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Personal homelab infrastructure managed with [Ansible](https://docs.ansible.com/) and [Taskfile](https://taskfile.dev/). The main host is a Proxmox server running a DockerVM (`vm-docker`, 192.168.0.69) and a Tailscale LXC (`lxc-tailscale`, 192.168.0.155). A Synology NAS is at 192.168.0.3.
+Personal homelab infrastructure managed with [Ansible](https://docs.ansible.com/) and [Taskfile](https://taskfile.dev/). The main host is a Proxmox server running a DockerVM (`vm-docker`, 10.0.40.40) and a Tailscale LXC (`lxc-tailscale`, 10.0.40.90). A Synology NAS is at 10.0.40.10.
 
 ## Common Commands
 
@@ -13,7 +13,7 @@ All commands use `task` (Taskfile runner). Dependencies are bootstrapped automat
 ```sh
 # Docker
 task ansible:docker:deploy          # Rsync stacks to DockerVM and bring all stacks up
-task ansible:docker:restart STACK=observability  # Restart a single stack (observability | roastbeef-swag | ha-timescaledb)
+task ansible:docker:restart STACK=observability  # Restart a single stack (observability | roastbeef-swag | timescaledb)
 
 # Proxmox
 task ansible:proxmox:update         # Snapshot all VMs, apt upgrade, reboot if needed
@@ -27,7 +27,7 @@ task ansible:proxmox:ping           # Test SSH connectivity to all hosts
 
 - Venv lives at `ansible/.venv`; all ansible binaries must be invoked via that venv (the Taskfile handles this automatically).
 - Secrets are stored in `ansible/inventory/group_vars/all/vault.yaml` (Ansible Vault). The vault password file is expected at `ansible/inventory/group_vars/all/.vault.pass` (gitignored, must be provisioned locally).
-- Inventory vars are in `ansible/inventory/group_vars/all/vars.yaml`: Proxmox API details, `dockge_stacks_path` (`/opt/stacks` on DockerVM), `retention_days`.
+- Inventory vars are in `ansible/inventory/group_vars/all/vars.yaml`: Proxmox API details, PBS/NAS addresses, backup schedule and retention, snapshot and timer settings, `dockge_stacks_path` (`/opt/stacks` on DockerVM).
 - Collections used: `community.proxmox`, `community.general`, `ansible.posix`.
 
 ### Ansible Roles
@@ -47,7 +47,7 @@ Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `s
 - **Grafana** (`:3000`) — dashboards; anonymous viewer access enabled; embedding allowed.
 - **Prometheus** (`:9090`) — metrics storage with remote-write receiver enabled. `prometheus.yaml` has `scrape_configs: []` — all scraping is done via Alloy.
 - **Loki** (`:3100`) — log storage.
-- **Alloy** (`:12345`) — collects metrics from node-exporter, cAdvisor, and all observability containers; scrapes the Synology NAS node-exporter (192.168.0.3:9100); tails all Docker container logs and system logs (`/var/log/*.log`); forwards everything to local Prometheus/Loki. Alloy config is modular: `main.alloy` imports `modules/observability.alloy` and `modules/generic.alloy`.
+- **Alloy** (`:12345`) — collects metrics from node-exporter, cAdvisor, and all observability containers; scrapes the Synology NAS node-exporter (10.0.40.10:9100); tails all Docker container logs and system logs (`/var/log/*.log`); forwards everything to local Prometheus/Loki. Alloy config is modular: `main.alloy` imports `modules/observability.alloy` and `modules/generic.alloy`.
 - **node-exporter** + **cAdvisor** — host and container metrics. cAdvisor has several expensive metric collectors disabled.
 
 **roastbeef-swag** — Personal Discord bot (`ghcr.io/maribowman/roastbeef-swag`), port 8800, data persisted in `./data`.

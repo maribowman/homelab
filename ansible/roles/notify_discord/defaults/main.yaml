@@ -1,0 +1,5 @@
+---
+notify_title: "Homelab"
+notify_message: ""
+notify_level: info # info | warn | error
+notify_run_once: false

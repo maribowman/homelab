@@ -28,7 +28,7 @@ import.file "generic" {
 }
 
 generic.scrape_metrics "synology_metrics" {
-    targets = [{ "__address__" = "192.168.0.3:9100" }]
+    targets = [{ "__address__" = "10.0.40.10:9100" }]
     forward_to = [prometheus.remote_write.local_prometheus.receiver]
     job_label = "synology-monitoring"
 }

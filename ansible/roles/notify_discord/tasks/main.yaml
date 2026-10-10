@@ -1,0 +1,7 @@
+---
+# Stub: replaced by the real webhook implementation (workstream E)
+- name: Notify Discord (stub)
+  ansible.builtin.debug:
+    msg: "[{{ notify_level }}] {{ notify_title }}: {{ notify_message }}"
+  delegate_to: localhost
+  become: false
