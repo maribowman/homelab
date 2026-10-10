@@ -1,0 +1,19 @@
+---
+# Lowered to `moderate` temporarily if `production` turns out too strict.
+profile: production
+
+# Collections are installed in CI from ansible/requirements.yaml
+offline: true
+
+exclude_paths:
+  - .git/
+  - .claude/
+  - .cache/
+  - ansible/.venv/
+  - docker/stacks/*/data/
+  - "**/.venv/"
+
+skip_list:
+  # The shared role interfaces (notify_title/notify_message/notify_level,
+  # docker_state/target_stack) are fixed contracts without a role-name prefix.
+  - var-naming[no-role-prefix]
