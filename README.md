@@ -34,12 +34,13 @@ Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the play
 
 ### Ansible vault
 
-Secrets live in `ansible/inventory/group_vars/all/vault.yaml` (encrypted, committed). The password file next to it is gitignored and has to be created once on every machine that runs the playbooks:
+Secrets live in `ansible/inventory/group_vars/all/vault.yaml`, encrypted with the password in `.vault.pass` next to it. Both files are gitignored and exist only on the laptop; `task ansible:control:apply` copies them to the control node. Create them once:
 
 ```sh
 echo '<vault password>' > ansible/inventory/group_vars/all/.vault.pass
 chmod 600 ansible/inventory/group_vars/all/.vault.pass
 
+# use `create` instead of `edit` the first time
 ansible/.venv/bin/ansible-vault edit ansible/inventory/group_vars/all/vault.yaml \
   --vault-password-file ansible/inventory/group_vars/all/.vault.pass
 ```
