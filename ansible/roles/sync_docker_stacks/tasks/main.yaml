@@ -6,8 +6,8 @@
     recursive: true
     rsync_opts:
       - "--exclude=data"
-      # .env files are written from the vault below, never copied from a working tree
-      - "--exclude=.env"
+      # .env files are written from the vault below; .env.example and other .env* files are never synced
+      - "--exclude=.env*"
 
 # Only stacks listed in docker_stack_env are managed; any other .env is left alone
 - name: Validate docker_stack_env
@@ -40,5 +40,5 @@
     rsync_opts:
       - "--exclude=dockge"
       - "--exclude=data"
-      - "--exclude=.env"
+      - "--exclude=.env*"
   when: sync_pull_remote | bool
