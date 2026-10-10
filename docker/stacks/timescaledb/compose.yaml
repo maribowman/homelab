@@ -1,6 +1,6 @@
 services:
   timescaledb:
-    image: timescale/timescaledb-ha:pg18@sha256:7d352e92884862549363b96d2b791c31fcd941e570308780890b27ae1449c829 # pinned from registry, verify against running version
+    image: timescale/timescaledb-ha:pg18@sha256:7d352e92884862549363b96d2b791c31fcd941e570308780890b27ae1449c829 # must match the running image; bump only when Scribe supports it
     container_name: timescaledb
     restart: unless-stopped
     ports:

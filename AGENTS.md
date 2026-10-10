@@ -87,7 +87,7 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 
 ### Docker Stacks (`docker/stacks/`)
 
-Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `sync_docker_stacks`. [Dockge](https://github.com/louislam/dockge) (at `docker/dockge/`) manages them on the VM side but is not itself a synced stack. All images are pinned to a version tag plus digest and bumped by Renovate (`renovate.json`; Grafana and Prometheus images are grouped, majors and `timescaledb-ha` get `needs-review` and never automerge).
+Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `sync_docker_stacks`. [Dockge](https://github.com/louislam/dockge) (at `docker/dockge/`) manages them on the VM side but is not itself a synced stack. All images are pinned to a version tag plus digest and bumped by Renovate (`renovate.json`; Grafana and Prometheus images are grouped, majors get `needs-review` and never automerge; `timescaledb-ha` (used by Scribe on Home Assistant) gets a PR only after approval in the Renovate Dependency Dashboard).
 
 **observability** — Full metrics + logs pipeline:
 - **Grafana** (`:3000`) — dashboards; anonymous viewer access enabled; embedding allowed.

@@ -29,9 +29,10 @@
       "addLabels": ["needs-review"]
     },
     {
-      "description": "Database image updates always need a manual review",
+      "description": "TimescaleDB is used by Scribe on Home Assistant: only open a PR once it is approved in the Dependency Dashboard",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["timescale/timescaledb-ha"],
+      "dependencyDashboardApproval": true,
       "automerge": false,
       "addLabels": ["needs-review"]
     }
