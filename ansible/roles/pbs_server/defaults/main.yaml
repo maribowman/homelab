@@ -3,7 +3,7 @@
 pbs_server_cifs_user: "proxmox-backup-server"
 pbs_server_credentials_file: "/etc/pbs-synology-credentials"
 pbs_server_mount_path: "/mnt/proxmox_backup_home"
-pbs_server_mount_opts: "credentials={{ pbs_server_credentials_file }},vers=2.0,uid=backup,gid=backup,iocharset=utf8"
+pbs_server_mount_opts: "credentials={{ pbs_server_credentials_file }},vers=2.0,uid=backup,gid=backup,iocharset=utf8,_netdev"
 
 # Datastore (name: pbs_datastore). The CIFS mount only covers the top-level share,
 # the PBS subdir is selected here.
