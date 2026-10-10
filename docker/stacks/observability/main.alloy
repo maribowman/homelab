@@ -13,7 +13,7 @@ import.file "observability" {
 observability.scrape_metrics "observability_metrics" {
     targets = [
         { "__address__" = "node-exporter:9100", "instance" = "node-exporter" },
-        { "__address__" = "cadvisor:8080", "instance" = "cadvisor" },
+        { "__address__" = "logporter:9333", "instance" = "logporter" },
         { "__address__" = "prometheus:9090", "instance" = "prometheus" },
         { "__address__" = "loki:3100", "instance" = "loki" },
         { "__address__" = "grafana:3000", "instance" = "grafana" },

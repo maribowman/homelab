@@ -93,8 +93,8 @@ Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `s
 - **Grafana** (`:3000`) — dashboards; anonymous viewer access enabled; embedding allowed.
 - **Prometheus** (`:9090`) — metrics storage with remote-write receiver enabled. `prometheus.yaml` has `scrape_configs: []` — all scraping is done via Alloy.
 - **Loki** (`:3100`) — log storage.
-- **Alloy** (`:12345`) — collects metrics from node-exporter, cAdvisor, and all observability containers; scrapes the Synology NAS node-exporter (10.0.40.10:9100); tails all Docker container logs and system logs (`/var/log/*.log`); forwards everything to local Prometheus/Loki. Alloy config is modular: `main.alloy` imports `modules/observability.alloy` and `modules/generic.alloy`.
-- **node-exporter** + **cAdvisor** — host and container metrics. cAdvisor has several expensive metric collectors disabled.
+- **Alloy** (`:12345`) — collects metrics from node-exporter, logporter, and all observability containers; scrapes the Synology NAS node-exporter (10.0.40.10:9100); tails all Docker container logs and system logs (`/var/log/*.log`); forwards everything to local Prometheus/Loki. Alloy config is modular: `main.alloy` imports `modules/observability.alloy` and `modules/generic.alloy`.
+- **node-exporter** + **logporter** (`:9333`) — host and per-container metrics (CPU, memory, disk I/O, network). logporter replaced cAdvisor, which used far more RAM and CPU; there is no per-container disk usage.- Grafana has the Strava datasource plugin preinstalled (`GF_PLUGINS_PREINSTALL`) for a planned Strava dashboard; it isn't used yet. The admin password comes from `GF_SECURITY_ADMIN_PASSWORD` in the stack's gitignored `.env`.
 
 **roastbeef-swag** — Personal Discord bot (`ghcr.io/maribowman/roastbeef-swag`), port 8800, data persisted in `./data`.
 

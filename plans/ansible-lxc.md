@@ -137,7 +137,7 @@ task ansible:proxmox:ping              # the control node reaches every host
 systemctl start homelab-deploy.service && journalctl -fu homelab-deploy.service
 ```
 - **Expected:** the first run always deploys, because there's no state file yet. It should finish healthy and write `/var/lib/homelab/deployed-sha`. A second run should print "already deployed".
-- **Precondition:** the image pins are confirmed against what's running. Above all, the TimescaleDB digest must match the image on the VM, and logporter must be in the repo if it's part of the observability stack. Otherwise this deploy changes things.
+- **Precondition:** the image pins are confirmed against what's running. Above all, the TimescaleDB digest must match the image on the VM, and the observability stack in the repo (logporter, no cAdvisor) must match the VM. Otherwise this deploy changes things.
 
 ```sh
 systemctl start homelab-maintenance.service && journalctl -fu homelab-maintenance.service

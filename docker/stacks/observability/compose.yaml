@@ -1,24 +1,32 @@
 services:
   grafana:
-    image: grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2 # pinned from registry, verify against running version
+    image: grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
     container_name: grafana
     restart: unless-stopped
     ports:
       - 3000:3000
     environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:?set GF_SECURITY_ADMIN_PASSWORD in docker/stacks/observability/.env}
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      # Strava datasource, for a planned Strava dashboard (not used yet)
+      - GF_SERVER_ROOT_URL=http://10.0.40.40:3000
+      - GF_PLUGINS_PREINSTALL=grafana-strava-datasource
+      - GF_FEATURE_TOGGLES_ENABLE=externalServiceAccounts,datasourceLegacyIdApi
+      - GF_AUTH_MANAGED_SERVICE_ACCOUNTS_ENABLED=true
     volumes:
       - grafana-data:/var/lib/grafana
     networks:
       - observability
 
   prometheus:
-    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e # pinned from registry, verify against running version
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     container_name: prometheus
     restart: unless-stopped
     ports:
+      # Bound to all interfaces on purpose, with the remote-write receiver enabled
+      # below. Accepted exposure for a trusted LAN-only homelab.
       - 9090:9090
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
@@ -27,12 +35,14 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --web.enable-remote-write-receiver
-      - --storage.tsdb.out-of-order-time-window=3h
+      # Explicit retention (default is 15d). Aligned with Loki's 30d window.
+      # Add --storage.tsdb.retention.size=<N>GB once the disk budget is known.
+      - --storage.tsdb.retention.time=30d
     networks:
       - observability
 
   loki:
-    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193 # pinned from registry, verify against running version
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     container_name: loki
     restart: unless-stopped
     ports:
@@ -45,7 +55,7 @@ services:
       - observability
 
   alloy:
-    image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f # pinned from registry, verify against running version
+    image: grafana/alloy:v1.16.2@sha256:32913cbfac652d15fa84d256a74e5ee3f71575961bb19d34796ce3838bfba693
     container_name: alloy
     restart: unless-stopped
     depends_on:
@@ -63,7 +73,7 @@ services:
       - observability
 
   node-exporter:
-    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0 # pinned from registry, verify against running version
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
     container_name: node-exporter
     restart: unless-stopped
     volumes:
@@ -78,34 +88,16 @@ services:
     networks:
       - observability
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.55.1@sha256:3de2bd5203120b866d74a9b283b2ffb8ec382fbf9dc321814700c6ea6f44ec57 # pinned from registry, verify against running version
-    container_name: cadvisor
+  # Lightweight per-container metrics exporter (CPU, memory, disk I/O, network),
+  # scraped by Alloy on :9333. Replaces cAdvisor, which used ~10x the RAM and
+  # ~15-20x the CPU. Trade-off: no per-container disk *usage* (filesystem size),
+  # which is essentially a cAdvisor-only metric.
+  logporter:
+    image: lifailon/logporter:1.4.1@sha256:522a4f917a1e21d8d8790ca4d55f7909c7620acb77e76a71bcb2f6dc5681a053
+    container_name: logporter
     restart: unless-stopped
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    command:
-      - --housekeeping_interval=30s
-      # Skip walking the full cgroup tree
-      - --docker_only=true
-      # Skip storing container labels
-      - --store_container_labels=false
-      # Disable root cgroup stats, redundant with node-exporter
-      - --disable_root_cgroup_stats=true
-      # Disable expensive or unused metrics
-      # percpu: per-CPU stats per container, O(containers x cores) each interval
-      # perf_event: Linux perf syscalls, very expensive
-      # sched/cpuLoad: reads /proc/sched_debug and load averages
-      # advtcp/tcp/udp: network protocol stats
-      # memory_numa/referenced_memory/resctrl: advanced memory/cache metrics
-      # hugetlb: hugepage stats
-      # process: process count per container
-      # app: app-level resource isolation
-      - --disable_metrics=advtcp,app,cpuLoad,hugetlb,memory_numa,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - observability
 
