@@ -1,0 +1,7 @@
+---
+# Warn when a guest's newest backup is older than this
+preflight_backup_check_max_age_hours: 36
+# PVE storage the vzdump job writes to
+preflight_backup_check_storage: "{{ pve_pbs_storage_id }}"
+preflight_backup_check_api_url: "https://{{ pve_host }}:8006/api2/json"
+preflight_backup_check_validate_certs: false
