@@ -1,16 +1,168 @@
 ---
-- name: System maintenance
-  hosts: all
-  become: true
+# Weekly maintenance run:
+#   1. Preflight: warn when a guest has no recent backup (never blocks the run)
+#   2. Guests one at a time, PBS last:
+#      snapshot -> [docker down] -> apt dist-upgrade -> reboot if needed -> [docker up + health]
+#   3. PVE host: apt dist-upgrade, never rebooted; warns when a reboot is pending
+#
+# A failed snapshot skips that guest. A failed update sends the rollback command and
+# fails the host; with serial: 1 that stops the run, so PBS and the PVE host stay untouched.
+#
+# Per-host results for a run summary: update_proxmox_machines_status (ok | skipped | failed),
+# update_proxmox_machines_packages, update_pve_host_status, update_pve_host_reboot_pending.
+
+- name: Preflight backup check
+  hosts: guests
+  gather_facts: false
+  become: false
 
   roles:
-    - role: snapshot_proxmox_machines
-    - role: deploy_docker_stacks
-      vars:
-        docker_state: "down"
-      when: inventory_hostname in groups['docker_hosts']
-    - role: update_proxmox_machines
-    - role: deploy_docker_stacks
-      vars:
-        docker_state: "up"
-      when: inventory_hostname in groups['docker_hosts']
+    - role: preflight_backup_check
+
+- name: Update guests
+  hosts: guests:!pbs_hosts
+  serial: 1
+  gather_facts: false
+  become: true
+
+  tasks: &guest_update_tasks
+    - name: Snapshot guest
+      block:
+        - name: Create pre-update snapshot
+          ansible.builtin.include_role:
+            name: snapshot_proxmox_machines
+      rescue:
+        - name: Record skipped guest
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: skipped
+
+        - name: Notify snapshot failure
+          ansible.builtin.include_role:
+            name: notify_discord
+          vars:
+            notify_title: "Maintenance: {{ inventory_hostname }}"
+            notify_message: >-
+              Snapshot failed, host skipped without updating:
+              {{ ansible_failed_result.msg | default('unknown error') }}
+            notify_level: error
+
+        - name: Skip guest
+          ansible.builtin.meta: end_host
+
+    - name: Update guest
+      block:
+        - name: Stop docker stacks
+          ansible.builtin.include_role:
+            name: deploy_docker_stacks
+          vars:
+            docker_state: down
+          when: inventory_hostname in groups['docker_hosts']
+
+        - name: Upgrade packages
+          ansible.builtin.include_role:
+            name: update_proxmox_machines
+
+        - name: Start docker stacks
+          ansible.builtin.include_role:
+            name: deploy_docker_stacks
+          vars:
+            docker_state: up
+          when: inventory_hostname in groups['docker_hosts']
+
+        - name: Check docker stack health
+          ansible.builtin.include_role:
+            name: deploy_docker_stacks
+          vars:
+            docker_state: health
+          when: inventory_hostname in groups['docker_hosts']
+
+        - name: Record updated guest
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: ok
+
+        - name: Notify update success
+          ansible.builtin.include_role:
+            name: notify_discord
+          vars:
+            notify_title: "Maintenance: {{ inventory_hostname }}"
+            notify_message: >-
+              Upgraded {{ update_proxmox_machines_packages }} packages{{
+              ', rebooted' if update_proxmox_machines_rebooted else '' }}{{
+              ', stacks healthy' if inventory_hostname in groups['docker_hosts'] else '' }}
+            notify_level: info
+      rescue:
+        - name: Record failed guest
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: failed
+
+        - name: Notify update failure
+          ansible.builtin.include_role:
+            name: notify_discord
+          vars:
+            notify_title: "Maintenance FAILED: {{ inventory_hostname }}"
+            notify_message: >-
+              Task '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.msg | default('unknown error') }}.
+              Snapshot: {{ snapshot_proxmox_machines_snapname }}.
+              Roll back with: task ansible:proxmox:rollback HOST={{ inventory_hostname }}.
+              Remaining hosts were not updated.
+            notify_level: error
+
+        - name: Stop the run
+          ansible.builtin.fail:
+            msg: "Update of {{ inventory_hostname }} failed, stopping (snapshot {{ snapshot_proxmox_machines_snapname }})"
+
+# Same tasks as above, as a separate play so PBS is always updated last
+- name: Update PBS
+  hosts: pbs_hosts
+  serial: 1
+  gather_facts: false
+  become: true
+
+  tasks: *guest_update_tasks
+
+- name: Update PVE host
+  hosts: proxmox_hosts
+  serial: 1
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Update PVE host
+      block:
+        - name: Upgrade packages
+          ansible.builtin.include_role:
+            name: update_pve_host
+
+        - name: Record updated PVE host
+          ansible.builtin.set_fact:
+            update_pve_host_status: ok
+
+        - name: Notify update result
+          ansible.builtin.include_role:
+            name: notify_discord
+          vars:
+            notify_title: "{{ 'PVE host reboot pending' if update_pve_host_reboot_pending else 'Maintenance' }}: {{ inventory_hostname }}"
+            notify_message: >-
+              Upgraded {{ update_pve_host_packages }} packages, not rebooted.{{
+              (' Reboot pending: ' ~ (update_pve_host_reboot_reasons | join('; ')) ~ '.')
+              if update_pve_host_reboot_pending else '' }}
+            notify_level: "{{ 'warn' if update_pve_host_reboot_pending else 'info' }}"
+      rescue:
+        - name: Record failed PVE host
+          ansible.builtin.set_fact:
+            update_pve_host_status: failed
+
+        - name: Notify update failure
+          ansible.builtin.include_role:
+            name: notify_discord
+          vars:
+            notify_title: "Maintenance FAILED: {{ inventory_hostname }}"
+            notify_message: >-
+              Task '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.msg | default('unknown error') }}
+            notify_level: error
+
+        - name: Fail PVE host
+          ansible.builtin.fail:
+            msg: "Update of {{ inventory_hostname }} failed"

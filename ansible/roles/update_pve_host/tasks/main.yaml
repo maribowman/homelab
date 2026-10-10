@@ -1,0 +1,78 @@
+---
+# Upgrades the PVE host. It is NEVER rebooted here: the role only reports whether a
+# reboot is pending (update_pve_host_reboot_pending / update_pve_host_reboot_reasons).
+
+- name: Refresh package index
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Read enabled package sources
+  ansible.builtin.command: apt-cache policy
+  register: update_pve_host_policy
+  changed_when: false
+  check_mode: false
+
+- name: Assert a Proxmox VE repository is enabled
+  ansible.builtin.assert:
+    that:
+      - update_pve_host_policy.stdout is search('/(' ~ (update_pve_host_repos | join('|')) ~ ')\s')
+    fail_msg: "None of {{ update_pve_host_repos | join(', ') }} is enabled in apt sources, refusing to upgrade"
+    quiet: true
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: "{{ update_pve_host_autoremove }}"
+  register: update_pve_host_apt
+
+- name: Count upgraded packages
+  ansible.builtin.set_fact:
+    update_pve_host_packages: >-
+      {{ update_pve_host_apt.stdout | default('')
+         | regex_findall('(\d+) upgraded, (\d+) newly installed')
+         | first | default(['0', '0']) | map('int') | sum }}
+
+- name: Read running kernel
+  ansible.builtin.command: uname -r
+  register: update_pve_host_uname
+  changed_when: false
+  check_mode: false
+
+- name: Find installed kernels
+  ansible.builtin.find:
+    paths: /boot
+    patterns: "vmlinuz-*"
+    file_type: file
+  register: update_pve_host_kernels
+
+- name: Ask needrestart for the kernel status
+  ansible.builtin.command: needrestart -b
+  register: update_pve_host_needrestart
+  changed_when: false
+  failed_when: false # needrestart is optional on PVE
+  check_mode: false
+
+- name: Check reboot-required flag
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: update_pve_host_reboot_flag
+
+- name: Find newest installed kernel
+  ansible.builtin.set_fact:
+    update_pve_host_newest_kernel: >-
+      {{ update_pve_host_kernels.files | map(attribute='path') | map('basename')
+         | map('regex_replace', '^vmlinuz-', '') | community.general.version_sort
+         | last | default(update_pve_host_uname.stdout) }}
+
+- name: Determine whether a reboot is pending
+  ansible.builtin.set_fact:
+    update_pve_host_reboot_reasons: >-
+      {{ (['running kernel ' ~ update_pve_host_uname.stdout ~ ', newest installed ' ~ update_pve_host_newest_kernel]
+          if update_pve_host_uname.stdout != update_pve_host_newest_kernel else [])
+         + (['needrestart reports a pending kernel upgrade']
+            if (update_pve_host_needrestart.stdout | default('')) is search('NEEDRESTART-KSTA: [23]') else [])
+         + (['/var/run/reboot-required exists'] if update_pve_host_reboot_flag.stat.exists else []) }}
+
+- name: Record reboot status
+  ansible.builtin.set_fact:
+    update_pve_host_reboot_pending: "{{ update_pve_host_reboot_reasons | length > 0 }}"
