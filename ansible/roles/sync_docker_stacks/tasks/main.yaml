@@ -6,6 +6,8 @@
     recursive: true
     rsync_opts:
       - "--exclude=data"
+      # Secrets live only on the host: never overwrite or pull them
+      - "--exclude=.env"
 
 - name: Pull remote-only stacks to local git
   ansible.posix.synchronize:
@@ -16,4 +18,5 @@
     rsync_opts:
       - "--exclude=dockge"
       - "--exclude=data"
+      - "--exclude=.env"
   when: sync_pull_remote | bool
