@@ -102,6 +102,7 @@ Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `s
 
 ## Manual steps (cannot be automated)
 
+- Authorize the laptop's `~/.ssh/id_ed25519.pub` for `root@pve` (`ssh-copy-id -i ~/.ssh/id_ed25519.pub root@10.0.10.10`). `pve` is a new SSH target, used by `update_pve_host` and `pve_backup_jobs`; before this branch Ansible only reached it through the API.
 - Create the Discord webhook and add the vault keys (`ansible-vault edit ansible/inventory/group_vars/all/vault.yaml`).
 - PVE API token `maintenance` privileges: VM.Snapshot, VM.Snapshot.Rollback, VM.Audit, VM.PowerMgmt, VM.Allocate, Sys.Audit, Datastore.Audit, Datastore.AllocateSpace, Datastore.AllocateTemplate.
 - Pick the control LXC IP/vmid and fill in the `lxc-ansible` line under `[control_nodes]` in `hosts.ini`.
