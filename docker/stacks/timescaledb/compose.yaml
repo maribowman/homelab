@@ -16,7 +16,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U admin
+        - pg_isready -U admin -d postgres
       interval: 60s
       timeout: 5s
       retries: 5
