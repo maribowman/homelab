@@ -15,6 +15,10 @@ All metrics and logs are visualized in [Grafana](https://grafana.com/oss/grafana
 
 Personal Discord Bot written in [go](https://go.dev/).
 
+### TimescaleDB
+
+Long-term Home Assistant history (used by Scribe).
+
 ## Automation
 
 Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the playbooks from this repo on systemd timers, and every run reports to Discord:
@@ -26,38 +30,60 @@ Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the play
 | Sun 04:00 | Snapshot → update every guest one at a time (PBS last) → health check → upgrade the PVE host (never rebooted automatically) → summary |
 | Continuous | Renovate PRs for image updates; patch/minor automerge when CI is green |
 
-### Proxmox
+## Setup
+
+### Ansible vault
+
+Secrets live in `ansible/inventory/group_vars/all/vault.yaml` (encrypted, committed). The password file next to it is gitignored and has to be created once on every machine that runs the playbooks:
 
 ```sh
-task ansible:proxmox:update                      # Full maintenance run
-task ansible:proxmox:update -- --limit lxc-tailscale
-task ansible:proxmox:check                       # Dry-run (--check --diff)
-task ansible:proxmox:rollback HOST=lxc-tailscale # Roll back to the newest pre-update snapshot
-task ansible:proxmox:ping                        # Test SSH connectivity to all hosts
+echo '<vault password>' > ansible/inventory/group_vars/all/.vault.pass
+chmod 600 ansible/inventory/group_vars/all/.vault.pass
+
+ansible/.venv/bin/ansible-vault edit ansible/inventory/group_vars/all/vault.yaml \
+  --vault-password-file ansible/inventory/group_vars/all/.vault.pass
 ```
 
-### Backups
+The vault holds these keys:
 
-```sh
-task ansible:backup:check   # Show what would change on PBS/PVE
-task ansible:backup:apply   # Configure PBS and the PVE backup job
+```yaml
+pve_token_secret: ...        # PVE API token root@pam!maintenance
+pbs_user_password: ...       # proxmox@pbs
+synology_cifs_password: ...  # Synology share for the PBS datastore
+discord_webhook_url: ...
+docker_stack_env:            # one dict per stack, rendered to /opt/stacks/<stack>/.env
+  observability:
+    GF_SECURITY_ADMIN_PASSWORD: ...
+  timescaledb:
+    POSTGRES_PASSWORD: ...
 ```
 
-Manual one-time steps are in [proxmox-backup-server-setup.md](proxmox-backup-server-setup.md).
+After changing the vault, run `task ansible:control:apply` so the control node gets the new copy.
 
-### Docker
+### Stack `.env` files
 
-```sh
-task ansible:docker:deploy                        # Sync stacks, pull pinned images, up -d, health check
-task ansible:docker:restart STACK=observability
-```
+`.env` files are never kept in the repo or synced from it. `task ansible:docker:deploy` writes `/opt/stacks/<stack>/.env` on the DockerVM from `docker_stack_env` in the vault, so every key a stack needs must be in the vault (values must not contain a single quote). Stacks not listed there keep their existing `.env`.
 
-### Control node
+Other one-time steps (SSH keys, API token privileges, firewall, Renovate) are listed in [AGENTS.md](AGENTS.md#manual-steps-cannot-be-automated) and [proxmox-backup-server-setup.md](proxmox-backup-server-setup.md).
 
-```sh
-task ansible:control:provision   # Create the LXC
-task ansible:control:apply       # Configure it (from the laptop)
-```
+## Commands
 
-See [AGENTS.md](AGENTS.md) for the roles, vars, vault keys and the manual steps.
+Dependencies (venv, collections) are installed automatically on first use. Extra Ansible args go after `--`, e.g. `task ansible:proxmox:update -- --limit lxc-tailscale`.
 
+| Command | Description |
+|---|---|
+| `task ansible:proxmox:update` | Full maintenance run: snapshot, update guests one by one, PVE host, summary |
+| `task ansible:proxmox:check` | Dry-run of the above (`--check --diff`) |
+| `task ansible:proxmox:rollback HOST=<host>` | Roll a guest back to its newest pre-update snapshot |
+| `task ansible:proxmox:ping` | Test SSH connectivity to all hosts |
+| `task ansible:proxmox:syntax` | Syntax-check the Proxmox playbooks |
+| `task ansible:docker:deploy` | Sync stacks, write `.env` files, pull pinned images, `up -d`, health check |
+| `task ansible:docker:restart STACK=<stack>` | Restart a single stack |
+| `task ansible:backup:apply` | Configure PBS (datastore, jobs, notifications) and the PVE backup job |
+| `task ansible:backup:check` | Dry-run of the above |
+| `task ansible:backup:syntax` | Syntax-check the backup playbook |
+| `task ansible:control:provision` | Create the control LXC |
+| `task ansible:control:apply` | Configure the control LXC (run from the laptop) |
+| `task ansible:control:syntax` | Syntax-check the control playbook |
+
+See [AGENTS.md](AGENTS.md) for the roles, vars and architecture.
