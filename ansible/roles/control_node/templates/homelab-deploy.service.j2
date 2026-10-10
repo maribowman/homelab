@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Homelab docker deploy (git pull; redeploy stacks if HEAD changed)
+Wants=network-online.target
+After=network-online.target
+OnFailure=homelab-notify@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ control_repo_path }}
+Environment=HOME=/root
+TimeoutStartSec={{ control_node_service_timeout }}
+ExecStart=/usr/bin/flock {{ control_node_lock_file }} /usr/local/bin/homelab-deploy

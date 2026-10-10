@@ -1,0 +1,30 @@
+---
+- name: Provision control LXC
+  hosts: localhost
+  gather_facts: false
+  tags: [provision]
+
+  tasks:
+    - name: Create and start control LXC
+      ansible.builtin.import_role:
+        name: control_node
+        tasks_from: provision
+
+- name: Configure control node
+  hosts: control_nodes
+  gather_facts: false
+  become: true
+  tags: [apply]
+
+  pre_tasks:
+    - name: Bootstrap python3
+      ansible.builtin.raw: test -e /usr/bin/python3 || (apt-get update && apt-get install -y python3)
+      register: _bootstrap_python
+      changed_when: "'Setting up' in _bootstrap_python.stdout"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+  roles:
+    - role: ssh_access
+    - role: control_node

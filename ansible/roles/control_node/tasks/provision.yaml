@@ -1,0 +1,72 @@
+---
+# Creates the control LXC on PVE. Runs on localhost (PVE API), not on the LXC.
+- name: Assert the control node is defined in the inventory
+  ansible.builtin.assert:
+    that:
+      - control_node_inventory_host in hostvars
+      - hostvars[control_node_inventory_host]['ansible_host'] is defined
+      - hostvars[control_node_inventory_host]['vmid'] is defined
+      - control_node_inventory_host in groups['control_nodes']
+    fail_msg: >-
+      '{{ control_node_inventory_host }}' is not defined in the inventory. Add it to
+      [control_nodes] in ansible/inventory/hosts.ini, e.g.
+      '{{ control_node_inventory_host }} ansible_host=10.0.40.XX vmid=XXXX'.
+    quiet: true
+
+- name: Set control node facts
+  ansible.builtin.set_fact:
+    _control_node_ip: "{{ hostvars[control_node_inventory_host]['ansible_host'] }}"
+    _control_node_vmid: "{{ hostvars[control_node_inventory_host]['vmid'] | int }}"
+
+- name: Download Debian container template
+  community.proxmox.proxmox_template:
+    api_host: "{{ pve_host }}"
+    api_user: "{{ pve_user }}"
+    api_token_id: "{{ pve_token_id }}"
+    api_token_secret: "{{ pve_token_secret }}"
+    node: "{{ pve_node }}"
+    storage: "{{ control_node_lxc_template_storage }}"
+    content_type: vztmpl
+    template: "{{ control_node_lxc_template }}"
+    state: present
+
+- name: Create control LXC
+  community.proxmox.proxmox:
+    api_host: "{{ pve_host }}"
+    api_user: "{{ pve_user }}"
+    api_token_id: "{{ pve_token_id }}"
+    api_token_secret: "{{ pve_token_secret }}"
+    node: "{{ pve_node }}"
+    vmid: "{{ _control_node_vmid }}"
+    hostname: "{{ control_node_inventory_host }}"
+    ostemplate: "{{ control_node_lxc_template_storage }}:vztmpl/{{ control_node_lxc_template }}"
+    unprivileged: true
+    features: "{{ control_node_lxc_features }}"
+    cores: "{{ control_node_lxc_cores }}"
+    memory: "{{ control_node_lxc_memory }}"
+    swap: "{{ control_node_lxc_swap }}"
+    disk: "{{ control_node_lxc_storage }}:{{ control_node_lxc_disk_gb }}"
+    netif:
+      net0: >-
+        name=eth0,bridge={{ control_node_lxc_bridge }},ip={{ _control_node_ip }}/{{ control_node_lxc_prefix }},gw={{ control_node_lxc_gateway }}{{
+        (',tag=' ~ control_node_lxc_vlan_tag) if control_node_lxc_vlan_tag | string | length > 0 else '' }}
+    nameserver: "{{ control_node_lxc_nameserver }}"
+    pubkey: "{{ lookup('ansible.builtin.file', control_node_lxc_pubkey_file) }}"
+    onboot: true
+    state: present
+
+- name: Start control LXC
+  community.proxmox.proxmox:
+    api_host: "{{ pve_host }}"
+    api_user: "{{ pve_user }}"
+    api_token_id: "{{ pve_token_id }}"
+    api_token_secret: "{{ pve_token_secret }}"
+    node: "{{ pve_node }}"
+    vmid: "{{ _control_node_vmid }}"
+    state: started
+
+- name: Wait for SSH on control LXC
+  ansible.builtin.wait_for:
+    host: "{{ _control_node_ip }}"
+    port: 22
+    timeout: 300

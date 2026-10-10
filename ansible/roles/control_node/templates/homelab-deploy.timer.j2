@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Homelab daily docker deploy timer
+
+[Timer]
+OnCalendar={{ deploy_oncalendar }}
+Persistent=true
+Unit=homelab-deploy.service
+
+[Install]
+WantedBy=timers.target
