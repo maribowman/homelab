@@ -1,3 +1,7 @@
 ---
-docker_state: restart
+docker_state: restart # up | down | restart | pull | health
 target_stack: ""
+
+# health: poll every <delay>s, give up after <retries> attempts
+deploy_docker_stacks_health_retries: 18
+deploy_docker_stacks_health_delay: 10

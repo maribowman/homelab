@@ -1,5 +1,6 @@
 services:
   roastbeef-swag:
+    # TODO: pin to latest@sha256:<digest>; ghcr requires auth for this package, so the digest could not be read
     image: ghcr.io/maribowman/roastbeef-swag:latest
     container_name: roastbeef-swag
     restart: always

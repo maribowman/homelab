@@ -1,0 +1,4 @@
+---
+# Pull remote-only stacks (e.g. created in the Dockge UI) back into the local repo.
+# Set to false on the control node, where git is the only source of truth.
+sync_pull_remote: true
