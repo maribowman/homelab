@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Homelab weekly maintenance timer
+
+[Timer]
+OnCalendar={{ maintenance_oncalendar }}
+Persistent=true
+Unit=homelab-maintenance.service
+
+[Install]
+WantedBy=timers.target
