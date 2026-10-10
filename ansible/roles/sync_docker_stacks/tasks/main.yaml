@@ -10,6 +10,14 @@
       - "--exclude=.env"
 
 # Only stacks listed in docker_stack_env are managed; any other .env is left alone
+- name: Validate docker_stack_env
+  ansible.builtin.assert:
+    that: (docker_stack_env | default({})).values() | reject('mapping') | list | length == 0
+    fail_msg: >-
+      docker_stack_env must map each stack to a dict of KEY: value (check the indentation in the vault),
+      offending stacks: {{ (docker_stack_env | default({})) | dict2items | rejectattr('value', 'mapping') | map(attribute='key') | list }}
+    quiet: true
+
 - name: Write stack .env files from the vault
   ansible.builtin.template:
     src: stack.env.j2
