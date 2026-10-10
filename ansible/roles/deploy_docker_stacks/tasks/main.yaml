@@ -1,24 +1,107 @@
 ---
-- name: Find all docker stack compose files
-  ansible.builtin.find:
-    paths: "{{ dockge_stacks_path }}"
-    patterns:
-      - "docker-compose.yaml"
-      - "docker-compose.yml"
-      - "compose.yaml"
-      - "compose.yml"
-    file_type: file
-    recurse: true
-  register: compose_files
+- name: Deploy docker stacks
+  block:
+    - name: Validate docker_state
+      ansible.builtin.assert:
+        that: docker_state in ['up', 'down', 'restart', 'pull', 'health']
+        fail_msg: "docker_state must be one of up | down | restart | pull | health, got '{{ docker_state }}'"
+        quiet: true
 
-- name: "{{ docker_state | capitalize }} docker stacks"
-  vars:
-    _compose_args: { up: "up -d", down: "down", restart: "restart" }
-  ansible.builtin.shell: "docker compose {{ _compose_args[docker_state] }}"
-  args:
-    chdir: "{{ item.path | dirname }}"
-  loop: "{{ compose_files.files }}"
-  when:
-    - (item.path | dirname | basename) != 'dockge'
-    - target_stack == "" or (item.path | dirname | basename) == target_stack
-  ignore_errors: true
+    - name: Find all docker stack compose files
+      ansible.builtin.find:
+        paths: "{{ dockge_stacks_path }}"
+        patterns:
+          - "docker-compose.yaml"
+          - "docker-compose.yml"
+          - "compose.yaml"
+          - "compose.yml"
+        file_type: file
+        recurse: true
+        depth: 2
+      register: deploy_docker_stacks_compose_files
+
+    - name: Select target docker stacks
+      ansible.builtin.set_fact:
+        deploy_docker_stacks_dirs: >-
+          {{ deploy_docker_stacks_compose_files.files | map(attribute='path') | map('dirname') | unique
+             | reject('match', '.*/dockge$')
+             | select('match', '.*/' ~ (target_stack | regex_escape if target_stack else '[^/]+') ~ '$')
+             | list }}
+
+    - name: Validate target_stack
+      ansible.builtin.assert:
+        that: deploy_docker_stacks_dirs | length > 0
+        fail_msg: "No docker stack found for target_stack='{{ target_stack }}' under {{ dockge_stacks_path }}"
+        quiet: true
+
+    - name: Run docker compose {{ docker_state }}
+      vars:
+        deploy_docker_stacks_cmds:
+          up: ["up -d"]
+          down: ["down"]
+          restart: ["restart"]
+          pull: ["pull", "up -d --remove-orphans"]
+      ansible.builtin.shell: "docker compose {{ deploy_docker_stacks_cmds[docker_state] | join(' && docker compose ') }}"
+      args:
+        chdir: "{{ item }}"
+      loop: "{{ deploy_docker_stacks_dirs }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      register: deploy_docker_stacks_compose
+      changed_when: (deploy_docker_stacks_compose.stdout ~ deploy_docker_stacks_compose.stderr) is search('(Created|Recreated|Started|Restarted|Stopped|Removed)')
+      when: docker_state != 'health'
+
+    - name: Wait for docker stack containers to be running and healthy
+      vars:
+        # `docker compose ps --format json` prints one object per line (compose >= 2.21) or a single array (older)
+        deploy_docker_stacks_containers: >-
+          {{ deploy_docker_stacks_health.stdout | from_json
+             if (deploy_docker_stacks_health.stdout | trim).startswith('[')
+             else deploy_docker_stacks_health.stdout_lines | select('match', '^ *[{]') | map('from_json') | list }}
+        deploy_docker_stacks_not_running: "{{ deploy_docker_stacks_containers | rejectattr('State', 'eq', 'running') | list }}"
+        deploy_docker_stacks_not_healthy: >-
+          {{ deploy_docker_stacks_containers | selectattr('Health', 'defined')
+             | selectattr('Health', 'in', ['starting', 'unhealthy']) | list }}
+      ansible.builtin.command:
+        cmd: docker compose ps --all --format json
+        chdir: "{{ item }}"
+      loop: "{{ deploy_docker_stacks_dirs }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      register: deploy_docker_stacks_health
+      changed_when: false
+      check_mode: false
+      until: >-
+        deploy_docker_stacks_health.rc == 0
+        and deploy_docker_stacks_containers | length > 0
+        and deploy_docker_stacks_not_running | length == 0
+        and deploy_docker_stacks_not_healthy | length == 0
+      retries: "{{ deploy_docker_stacks_health_retries }}"
+      delay: "{{ deploy_docker_stacks_health_delay }}"
+      # pull also health-checks, so a deploy only succeeds once the new containers are up
+      when: docker_state in ['pull', 'health']
+
+  rescue:
+    - name: Collect failed docker stacks
+      ansible.builtin.set_fact:
+        deploy_docker_stacks_failed: >-
+          {{ ((deploy_docker_stacks_compose.results | default([])) + (deploy_docker_stacks_health.results | default([])))
+             | selectattr('failed', 'defined') | selectattr('failed')
+             | map(attribute='item') | map('basename') | unique | list }}
+        deploy_docker_stacks_error: "{{ ansible_failed_result.msg | default('unknown error') }}"
+
+    - name: Notify Discord about failed docker stacks
+      ansible.builtin.include_role:
+        name: notify_discord
+      vars:
+        notify_title: "Docker {{ docker_state }} failed: {{ inventory_hostname }}"
+        notify_message: >-
+          {{ 'Failed stacks: ' ~ (deploy_docker_stacks_failed | join(', '))
+             if deploy_docker_stacks_failed | length > 0 else deploy_docker_stacks_error }}
+        notify_level: error
+
+    - name: Fail on failed docker stacks
+      ansible.builtin.fail:
+        msg: >-
+          docker_state={{ docker_state }} failed on {{ inventory_hostname }}:
+          {{ deploy_docker_stacks_failed | join(', ') if deploy_docker_stacks_failed | length > 0 else deploy_docker_stacks_error }}

@@ -1,6 +1,6 @@
 services:
   grafana:
-    image: grafana/grafana-oss:latest
+    image: grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2 # pinned from registry, verify against running version
     container_name: grafana
     restart: unless-stopped
     ports:
@@ -15,7 +15,7 @@ services:
       - observability
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e # pinned from registry, verify against running version
     container_name: prometheus
     restart: unless-stopped
     ports:
@@ -32,7 +32,7 @@ services:
       - observability
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193 # pinned from registry, verify against running version
     container_name: loki
     restart: unless-stopped
     ports:
@@ -45,7 +45,7 @@ services:
       - observability
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f # pinned from registry, verify against running version
     container_name: alloy
     restart: unless-stopped
     depends_on:
@@ -63,7 +63,7 @@ services:
       - observability
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0 # pinned from registry, verify against running version
     container_name: node-exporter
     restart: unless-stopped
     volumes:
@@ -79,7 +79,7 @@ services:
       - observability
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.55.1@sha256:3de2bd5203120b866d74a9b283b2ffb8ec382fbf9dc321814700c6ea6f44ec57 # pinned from registry, verify against running version
     container_name: cadvisor
     restart: unless-stopped
     volumes:

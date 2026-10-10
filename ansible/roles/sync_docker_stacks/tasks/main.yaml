@@ -15,3 +15,5 @@
     mode: pull
     rsync_opts:
       - "--exclude=dockge"
+      - "--exclude=data"
+  when: sync_pull_remote | bool
