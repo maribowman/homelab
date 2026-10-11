@@ -2,6 +2,6 @@
 # Root SSH key of the control node (matches ansible_ssh_private_key_file=~/.ssh/id_ed25519)
 ssh_access_key_path: "/root/.ssh/id_ed25519"
 ssh_access_key_comment: "ansible@{{ inventory_hostname }}"
-# Hosts that must accept the control node's key
-ssh_access_target_hosts: "{{ groups['all'] | difference(groups['control_nodes']) }}"
+# Hosts that must accept the control node's key. TrueNAS is excluded: its keys are managed in the UI
+ssh_access_target_hosts: "{{ groups['all'] | difference(groups['control_nodes'] + groups['truenas_hosts'] | default([])) }}"
 ssh_access_target_user: "root"
