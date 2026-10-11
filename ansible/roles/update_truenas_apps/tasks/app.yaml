@@ -1,0 +1,158 @@
+---
+# One app (update_truenas_apps_app, a parsed app.query item from main.yaml): plan, then app.upgrade (catalog app) or
+# app.pull_images (custom app), wait until it runs again, append the result to update_truenas_apps_results.
+# A failure is caught here, so the next app still runs; main.yaml records it.
+
+- name: Update app {{ update_truenas_apps_app.name }}
+  block:
+    - name: Reset app state
+      ansible.builtin.set_fact:
+        update_truenas_apps_stage: plan
+        update_truenas_apps_plan: {}
+
+    - name: Read upgrade summary
+      ansible.builtin.command:
+        argv: "{{ update_truenas_apps_call + ['app.upgrade_summary', update_truenas_apps_app.name] }}"
+      register: update_truenas_apps_upgrade_summary
+      changed_when: false
+      check_mode: false
+      when: not update_truenas_apps_app.custom
+
+    - name: Plan upgrade
+      ansible.builtin.set_fact:
+        update_truenas_apps_plan: >-
+          {{ update_truenas_apps_app.raw | truenas_upgrade_plan(update_truenas_apps_upgrade_summary.stdout | from_json)
+             if not update_truenas_apps_app.custom
+             else {'action': 'pull', 'target_version': '', 'reason': 'image updates available',
+                   'current_human_version': update_truenas_apps_app.human_version,
+                   'target_human_version': update_truenas_apps_app.human_version,
+                   'latest_human_version': update_truenas_apps_app.human_version} }}
+
+    - name: Validate upgrade plan
+      ansible.builtin.assert:
+        that:
+          - update_truenas_apps_plan.action | default('') in ['upgrade', 'held_back', 'none', 'pull']
+          - update_truenas_apps_plan.action != 'upgrade' or update_truenas_apps_plan.target_version | default('') | length > 0
+        fail_msg: "unexpected upgrade plan {{ update_truenas_apps_plan | to_json }}"
+        quiet: true
+
+    - name: Mark upgrade stage
+      ansible.builtin.set_fact:
+        update_truenas_apps_stage: "{{ 'pull' if update_truenas_apps_plan.action == 'pull' else 'upgrade' }}"
+      when: update_truenas_apps_plan.action in ['upgrade', 'pull']
+
+    - name: Upgrade app to {{ update_truenas_apps_plan.target_version | default('') }}
+      ansible.builtin.command:
+        argv: >-
+          {{ update_truenas_apps_call + update_truenas_apps_job_args
+             + ['app.upgrade', update_truenas_apps_app.name,
+                {'app_version': update_truenas_apps_plan.target_version,
+                 'snapshot_hostpaths': update_truenas_apps_snapshot_hostpaths | bool} | to_json] }}
+      changed_when: true
+      timeout: "{{ update_truenas_apps_job_timeout }}"
+      when: update_truenas_apps_plan.action == 'upgrade'
+
+    - name: Pull app images and redeploy
+      ansible.builtin.command:
+        argv: >-
+          {{ update_truenas_apps_call + update_truenas_apps_job_args
+             + ['app.pull_images', update_truenas_apps_app.name, {'redeploy': true} | to_json] }}
+      changed_when: true
+      timeout: "{{ update_truenas_apps_job_timeout }}"
+      when: update_truenas_apps_plan.action == 'pull'
+
+    # Apps that were not RUNNING before (stopped on purpose, crashed) are only checked once, without waiting.
+    # API fields: state (CRASHED|DEPLOYING|RUNNING|STOPPED|STOPPING), version
+    - name: Wait for app to run
+      vars:
+        update_truenas_apps_after_state: >-
+          {{ (update_truenas_apps_after.stdout | from_json).state
+             if update_truenas_apps_after.rc == 0 and update_truenas_apps_after.stdout | trim is match('[{]') else '' }}
+      ansible.builtin.command:
+        argv: >-
+          {{ update_truenas_apps_call
+             + ['app.query', [['name', '=', update_truenas_apps_app.name]] | to_json,
+                {'get': true, 'select': ['name', 'state', 'version', 'human_version']} | to_json] }}
+      register: update_truenas_apps_after
+      changed_when: false
+      check_mode: false
+      until: update_truenas_apps_after_state == 'RUNNING' or update_truenas_apps_app.state != 'RUNNING'
+      retries: "{{ update_truenas_apps_wait_retries if update_truenas_apps_app.state == 'RUNNING' else 0 }}"
+      delay: "{{ update_truenas_apps_wait_delay }}"
+      when:
+        - update_truenas_apps_plan.action in ['upgrade', 'pull']
+        - not ansible_check_mode
+
+    - name: Parse app state after update
+      vars:
+        update_truenas_apps_after_raw: "{{ update_truenas_apps_after.stdout | from_json }}"
+      ansible.builtin.set_fact:
+        update_truenas_apps_after_app:
+          state: "{{ update_truenas_apps_after_raw.state }}"
+          version: "{{ update_truenas_apps_after_raw.version }}"
+          human_version: "{{ update_truenas_apps_after_raw.human_version }}"
+      when:
+        - update_truenas_apps_plan.action in ['upgrade', 'pull']
+        - not ansible_check_mode
+
+    - name: Assert app runs the target version
+      ansible.builtin.assert:
+        that:
+          - update_truenas_apps_after_app.version == update_truenas_apps_plan.target_version
+          - update_truenas_apps_app.state != 'RUNNING' or update_truenas_apps_after_app.state == 'RUNNING'
+        fail_msg: >-
+          {{ update_truenas_apps_app.name }} is {{ update_truenas_apps_after_app.state }} on version
+          {{ update_truenas_apps_after_app.version }}, expected RUNNING on {{ update_truenas_apps_plan.target_version }}
+        quiet: true
+      when:
+        - update_truenas_apps_plan.action == 'upgrade'
+        - not ansible_check_mode
+
+    - name: Record app result
+      vars:
+        update_truenas_apps_status:
+          upgrade: "{{ 'would_upgrade' if ansible_check_mode else 'upgraded' }}"
+          pull: "{{ 'would_pull' if ansible_check_mode else 'pulled' }}"
+          held_back: held_back
+          none: up_to_date
+      ansible.builtin.set_fact:
+        update_truenas_apps_results: >-
+          {{ update_truenas_apps_results + [{
+               'name': update_truenas_apps_app.name,
+               'custom': update_truenas_apps_app.custom,
+               'action': update_truenas_apps_plan.action,
+               'status': update_truenas_apps_status[update_truenas_apps_plan.action],
+               'stage': update_truenas_apps_stage,
+               'current_human_version': update_truenas_apps_plan.current_human_version | default(''),
+               'target_human_version': (update_truenas_apps_after_app.human_version
+                                        if update_truenas_apps_plan.action == 'upgrade' and not ansible_check_mode
+                                        else update_truenas_apps_plan.target_human_version) | default(''),
+               'latest_human_version': update_truenas_apps_plan.latest_human_version | default(''),
+               'partial': update_truenas_apps_plan.action == 'upgrade'
+                          and update_truenas_apps_plan.latest_human_version | default('') | length > 0
+                          and update_truenas_apps_plan.latest_human_version != update_truenas_apps_plan.target_human_version,
+               'reason': update_truenas_apps_plan.reason | default(''),
+               'error': ''}] }}
+
+  rescue:
+    - name: Record failed app
+      ansible.builtin.set_fact:
+        update_truenas_apps_results: >-
+          {{ update_truenas_apps_results + [{
+               'name': update_truenas_apps_app.name,
+               'custom': update_truenas_apps_app.custom,
+               'action': update_truenas_apps_plan.action | default('unknown'),
+               'status': 'failed',
+               'stage': update_truenas_apps_stage,
+               'current_human_version': update_truenas_apps_app.human_version,
+               'target_human_version': update_truenas_apps_plan.target_human_version | default(''),
+               'latest_human_version': update_truenas_apps_plan.latest_human_version | default(''),
+               'partial': false,
+               'reason': update_truenas_apps_plan.reason | default(''),
+               'error': update_truenas_apps_error}] }}
+      vars:
+        # midclt prints the error ("[EFAULT] ...") to stderr, after job progress and before the traceback
+        update_truenas_apps_error: >-
+          {{ (ansible_failed_result.stderr_lines | default([]) | select('match', '^.E[A-Z0-9_]+[]]') | first)
+             | default(ansible_failed_result.stderr_lines | default([]) | select | last, true)
+             | default(ansible_failed_result.msg | default('unknown error'), true) | truncate(200) }}
