@@ -1,6 +1,6 @@
 ---
 # Runs per guest (all API calls on localhost) and never fails the play: problems are
-# collected into one Discord `warn` and the run continues.
+# recorded as `warn` entries for the run summary (run_report) and the run continues.
 #
 # Backups are checked on the storage, not per task: a scheduled job backing up several
 # guests creates a single vzdump task without a vmid, so filtering tasks by vmid misses it.
@@ -79,22 +79,26 @@
       ansible.builtin.set_fact:
         preflight_backup_check_job_status: unknown
 
-- name: Collect backup problems
-  ansible.builtin.set_fact:
-    preflight_backup_check_problems: >-
-      {{ (ansible_play_hosts | map('extract', hostvars)
-          | rejectattr('preflight_backup_check_status', 'in', ['ok', 'excluded'])
-          | map(attribute='preflight_backup_check_summary') | list)
-         + ([] if preflight_backup_check_job_status == 'OK'
-            else ['newest vzdump task: ' ~ preflight_backup_check_job_status]) }}
-  run_once: true
-
-- name: Warn about backup problems
+- name: Report backup problem of this guest
   ansible.builtin.include_role:
-    name: notify_discord
+    name: run_report
+    tasks_from: record
   vars:
-    notify_title: "Maintenance preflight: backups"
-    notify_message: "{{ (preflight_backup_check_problems + ['Continuing with updates.']) | join('\n') }}"
-    notify_level: warn
-  when: preflight_backup_check_problems | length > 0
-  run_once: true
+    report_level: warn
+    report_text: "preflight: {{ preflight_backup_check_summary | regex_replace('^[^:]*: ', '') }}"
+    report_todo: "check the PBS backups of vmid {{ vmid }}"
+  when: preflight_backup_check_status not in ['ok', 'excluded']
+
+# Not run_once: that does not carry over into a dynamically included role
+- name: Report failed backup job
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: warn
+    report_text: "preflight: newest vzdump task {{ preflight_backup_check_job_status }}"
+    report_todo: "check the backup job (Datacenter → Backup) and its last task log"
+    report_host: "{{ groups['proxmox_hosts'] | first }}"
+  when:
+    - preflight_backup_check_job_status != 'OK'
+    - inventory_hostname == ansible_play_hosts | first

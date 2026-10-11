@@ -1,13 +1,14 @@
 ---
-# Weekly maintenance run:
+# Proxmox maintenance (imported by proxmox.yaml, followed by include/run_summary.yaml):
 #   1. Preflight: warn when a guest has no recent backup (never blocks the run)
 #   2. Guests one at a time, PBS last:
 #      snapshot -> [docker down] -> apt dist-upgrade -> reboot if needed -> [docker up + health]
 #   3. PVE host: apt dist-upgrade, never rebooted; warns when a reboot is pending
 #
-#   4. Run summary: one Discord message for all hosts; fails the run if any update failed
+# Nothing is sent from here: every result is recorded with run_report (record) and the
+# run summary sends one Discord message for the whole run, then fails the run when red.
 #
-# A failed snapshot skips that guest. A failed update sends the rollback command and ends
+# A failed snapshot skips that guest. A failed update records the rollback command and ends
 # that guest; every remaining guest, PBS and the PVE host are then marked not_run.
 #
 # Per-host results: update_proxmox_machines_status (ok | skipped | failed | not_run),
@@ -38,6 +39,14 @@
           ansible.builtin.set_fact:
             update_proxmox_machines_status: not_run
 
+        - name: Report guest not run
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: warn
+            report_text: "not run (earlier failure)"
+
         - name: End guest
           ansible.builtin.meta: end_host
 
@@ -51,15 +60,14 @@
           ansible.builtin.set_fact:
             update_proxmox_machines_status: skipped
 
-        - name: Notify snapshot failure
+        - name: Report snapshot failure
           ansible.builtin.include_role:
-            name: notify_discord
+            name: run_report
+            tasks_from: record
           vars:
-            notify_title: "Maintenance: {{ inventory_hostname }}"
-            notify_message: >-
-              Snapshot failed, host skipped without updating:
-              {{ ansible_failed_result.msg | default('unknown error') }}
-            notify_level: error
+            report_level: error
+            report_text: "snapshot failed, not updated: {{ ansible_failed_result.msg | default('unknown error') }}"
+            report_todo: "fix snapshots for vmid {{ vmid }}, then re-run with --limit {{ inventory_hostname }}"
 
         - name: Skip guest
           ansible.builtin.meta: end_host
@@ -95,35 +103,35 @@
           ansible.builtin.set_fact:
             update_proxmox_machines_status: ok
 
-        - name: Notify update success
+        - name: Report updated guest
           ansible.builtin.include_role:
-            name: notify_discord
+            name: run_report
+            tasks_from: record
           vars:
-            notify_title: "Maintenance: {{ inventory_hostname }}"
-            notify_message: >-
-              Upgraded {{ update_proxmox_machines_packages }} packages{{
+            report_level: ok
+            report_text: >-
+              {{ update_proxmox_machines_packages }} packages{{
               ', rebooted' if update_proxmox_machines_rebooted else '' }}{{
               ', stacks healthy' if inventory_hostname in groups['docker_hosts'] else '' }}
-            notify_level: info
       rescue:
         - name: Record failed guest
           ansible.builtin.set_fact:
             update_proxmox_machines_status: failed
 
-        - name: Notify update failure
+        - name: Report update failure
           ansible.builtin.include_role:
-            name: notify_discord
+            name: run_report
+            tasks_from: record
           vars:
-            notify_title: "Maintenance FAILED: {{ inventory_hostname }}"
-            notify_message: >-
-              Task '{{ ansible_failed_task.name | default('unknown') }}' failed:
-              {{ ansible_failed_result.msg | default('unknown error') }}.
-              Snapshot: {{ snapshot_proxmox_machines_snapname }}.
-              Roll back with: task ansible:proxmox:rollback HOST={{ inventory_hostname }}.
-              Remaining hosts were not updated.
-            notify_level: error
+            report_level: error
+            report_text: >-
+              '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.msg | default('unknown error') }}
+            report_todo: >-
+              roll back to {{ snapshot_proxmox_machines_snapname | default('the pre-update snapshot') }}:
+              task ansible:proxmox:rollback HOST={{ inventory_hostname }}
 
-        # Not a hard failure, so the run summary still goes out; the summary play fails the run
+        # Not a hard failure, so the run summary still goes out; the summary fails the run
         - name: Stop updating this guest
           ansible.builtin.meta: end_host
 
@@ -153,6 +161,14 @@
           ansible.builtin.set_fact:
             update_pve_host_status: not_run
 
+        - name: Report PVE host not run
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: warn
+            report_text: "not run (earlier failure)"
+
         - name: End PVE host
           ansible.builtin.meta: end_host
 
@@ -166,84 +182,28 @@
           ansible.builtin.set_fact:
             update_pve_host_status: ok
 
-        - name: Notify update result
+        - name: Report updated PVE host
           ansible.builtin.include_role:
-            name: notify_discord
+            name: run_report
+            tasks_from: record
           vars:
-            notify_title: "{{ 'PVE host reboot pending' if update_pve_host_reboot_pending else 'Maintenance' }}: {{ inventory_hostname }}"
-            notify_message: >-
-              Upgraded {{ update_pve_host_packages }} packages, not rebooted.{{
-              (' Reboot pending: ' ~ (update_pve_host_reboot_reasons | join('; ')) ~ '.')
-              if update_pve_host_reboot_pending else '' }}
-            notify_level: "{{ 'warn' if update_pve_host_reboot_pending else 'info' }}"
+            report_level: "{{ 'warn' if update_pve_host_reboot_pending else 'ok' }}"
+            report_text: "{{ update_pve_host_packages }} packages{{ ', reboot pending' if update_pve_host_reboot_pending else '' }}"
+            report_todo: >-
+              {{ ('reboot when convenient (' ~ (update_pve_host_reboot_reasons | join('; ')) ~ ')')
+                 if update_pve_host_reboot_pending else '' }}
       rescue:
         - name: Record failed PVE host
           ansible.builtin.set_fact:
             update_pve_host_status: failed
 
-        - name: Notify update failure
+        - name: Report PVE host update failure
           ansible.builtin.include_role:
-            name: notify_discord
+            name: run_report
+            tasks_from: record
           vars:
-            notify_title: "Maintenance FAILED: {{ inventory_hostname }}"
-            notify_message: >-
-              Task '{{ ansible_failed_task.name | default('unknown') }}' failed:
+            report_level: error
+            report_text: >-
+              '{{ ansible_failed_task.name | default('unknown') }}' failed:
               {{ ansible_failed_result.msg | default('unknown error') }}
-            notify_level: error
-
-# One Discord message for the whole run. Runs on the managed hosts (not localhost) so it
-# also runs under --limit; only hosts that took part in this run are listed.
-- name: Run summary
-  hosts: guests:proxmox_hosts
-  gather_facts: false
-  become: false
-
-  tasks:
-    - name: Collect per-host results
-      vars:
-        maintenance_hv: "{{ hostvars[item] }}"
-        maintenance_is_pve: "{{ item in groups['proxmox_hosts'] }}"
-        maintenance_status: >-
-          {{ maintenance_hv.update_pve_host_status if maintenance_is_pve else maintenance_hv.update_proxmox_machines_status }}
-        maintenance_packages: >-
-          {{ maintenance_hv.update_pve_host_packages | default(0) if maintenance_is_pve
-             else maintenance_hv.update_proxmox_machines_packages | default(0) }}
-        maintenance_flag: >-
-          {{ ', REBOOT PENDING' if maintenance_is_pve and maintenance_hv.update_pve_host_reboot_pending | default(false)
-             else (', rebooted' if maintenance_hv.update_proxmox_machines_rebooted | default(false) else '') }}
-      ansible.builtin.set_fact:
-        maintenance_results: >-
-          {{ maintenance_results | default([]) + [{
-               'host': item,
-               'status': maintenance_status,
-               'line': item ~ ': ' ~ maintenance_status
-                       ~ ((' (' ~ maintenance_packages ~ ' packages' ~ maintenance_flag ~ ')') if maintenance_status == 'ok' else '')
-             }] }}
-      loop: "{{ groups['guests'] + groups['proxmox_hosts'] }}"
-      when: >-
-        (hostvars[item].update_pve_host_status is defined)
-        if item in groups['proxmox_hosts'] else (hostvars[item].update_proxmox_machines_status is defined)
-      run_once: true
-
-    - name: Send run summary
-      vars:
-        maintenance_list: "{{ maintenance_results | default([]) }}"
-        maintenance_failed: "{{ maintenance_list | selectattr('status', 'eq', 'failed') | list }}"
-        maintenance_warn: >-
-          {{ maintenance_list | selectattr('status', 'in', ['skipped', 'not_run']) | list | length > 0
-             or maintenance_list | map(attribute='line') | select('search', 'REBOOT PENDING') | list | length > 0 }}
-        notify_title: "Maintenance summary{{ ' (check mode)' if ansible_check_mode else '' }}"
-        notify_message: "{{ maintenance_list | map(attribute='line') | join('\n') or 'No hosts updated' }}"
-        notify_level: "{{ 'error' if maintenance_failed | length > 0 else ('warn' if maintenance_warn else 'info') }}"
-        notify_run_once: true
-      ansible.builtin.include_role:
-        name: notify_discord
-
-    # Exit non-zero so the systemd unit's OnFailure notification fires as well
-    - name: Fail the run when an update failed
-      vars:
-        maintenance_failed: "{{ maintenance_results | default([]) | selectattr('status', 'eq', 'failed') | map(attribute='host') | list }}"
-      ansible.builtin.fail:
-        msg: "Maintenance failed on: {{ maintenance_failed | join(', ') }}"
-      run_once: true
-      when: maintenance_failed | length > 0
+            report_todo: "check apt on {{ inventory_hostname }}"
