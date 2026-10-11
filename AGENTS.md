@@ -45,7 +45,7 @@ task ansible:control:syntax
 | Sun 04:00 | `git pull` → `proxmox:update` | `homelab-maintenance.timer` on `lxc-ansible` |
 | Continuous | Renovate PRs; patch/minor/digest automerge when CI is green | GitHub (`renovate.json`, `.github/workflows/ci.yaml`) |
 
-Every playbook run ends in **one** Discord summary (`run_report`): 🟢 ok, 🟡 done with time-uncritical todos (e.g. PVE reboot pending, stale backup), 🔴 failed with manual todos (e.g. the rollback command). The daily deploy only posts when not green (`-e run_report_notify=not_ok`); the weekly run always posts.
+Every playbook run ends in **one** Discord summary (`run_report`); its embed color is the worst result: green ok, yellow done with time-uncritical todos (e.g. PVE reboot pending, stale backup), red failed with manual todos (e.g. the rollback command). The daily deploy only posts when not green (`-e run_report_notify=not_ok`); the weekly run always posts.
 
 Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.service`, which posts the last 30 journal lines to Discord, unless the playbook already posted its summary (marker `/var/lib/homelab/report-sent.<unit>`, passed as `HOMELAB_REPORT_MARKER`). So the journal dump only shows up for failures before the summary (git pull, venv, aborted run).
 

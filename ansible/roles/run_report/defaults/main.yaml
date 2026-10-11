@@ -15,10 +15,6 @@ run_report_marker: "{{ lookup('ansible.builtin.env', 'HOMELAB_REPORT_MARKER') }}
 # Role internals
 run_report_max_chars: 3900 # Discord embed descriptions are limited to 4096
 run_report_levels: [ok, warn, error] # ascending severity
-run_report_emoji:
-  ok: "🟢"
-  warn: "🟡"
-  error: "🔴"
 run_report_notify_levels: # run_report level -> notify_discord level
   ok: info
   warn: warn

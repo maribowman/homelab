@@ -12,7 +12,7 @@
 #
 # Collects `run_report_entries` of every host (see tasks/record.yaml). Hosts that dropped
 # out of the run (failed or unreachable in an earlier play) without an error entry get one.
-# The worst entry sets the color: ok -> 🟢, warn -> 🟡, error -> 🔴. Fails the run when red.
+# The worst entry sets the embed color (ok green, warn amber, error red). Fails the run when red.
 
 - name: Collect run report
   tags: [always]
@@ -52,8 +52,7 @@
     run_report_host_lines: >-
       {%- set lines = [] -%}
       {%- for row in run_report_rows -%}
-        {%- set _ = lines.append(run_report_emoji[row.level] ~ ' ' ~ row.host
-                                 ~ ((' — ' ~ (row.texts | join('; '))) if row.texts else '')) -%}
+        {%- set _ = lines.append(row.host ~ ((' — ' ~ (row.texts | join('; '))) if row.texts else '')) -%}
       {%- endfor -%}
       {{ lines }}
     run_report_todo_block: "{{ ('\n\n**Todo**\n' ~ (run_report_todo_lines | join('\n'))) if run_report_todo_lines else '' }}"
@@ -74,7 +73,7 @@
   tags: [always]
   vars:
     notify_title: >-
-      {{ run_report_emoji[run_report_level] }} {{ run_report_title }}: {{
+      {{ run_report_title }}: {{
          {'ok': 'ok',
           'warn': 'done, ' ~ run_report_todo_count ~ ' todo' ~ ('' if run_report_todo_count | int == 1 else 's'),
           'error': 'FAILED'}[run_report_level] }}{{ ' (check mode)' if ansible_check_mode else '' }}

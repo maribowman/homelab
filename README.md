@@ -21,7 +21,7 @@ Home Assistant sensor data history.
 
 ## Automation
 
-Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the playbooks from this repo on systemd timers. Every run ends in one Discord summary: 🟢 all good, 🟡 done but with a todo that can wait (e.g. reboot the PVE host), 🔴 something failed and needs a manual fix (the message lists what to do, e.g. the rollback command). The daily deploy only posts when it is not green:
+Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the playbooks from this repo on systemd timers. Every run ends in one Discord summary whose color shows the worst result: green when all is good, yellow when it is done but with a todo that can wait (e.g. reboot the PVE host), red when something failed and needs a manual fix (the message lists what to do, e.g. the rollback command). The daily deploy only posts when it is not green:
 
 | When        | What                                                                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
