@@ -1,0 +1,229 @@
+---
+# Upgrades TrueNAS SCALE (25.10) apps and reports a pending OS update; the OS itself is never updated.
+#
+# - Catalog apps with an upgrade: app.upgrade_summary -> truenas_upgrade_plan (filter_plugins) -> app.upgrade to
+#   the highest non-major version; majors are held back and reported as todos.
+# - Custom apps with image updates: app.pull_images (redeploy) when update_truenas_apps_pull_custom.
+# - One app at a time (tasks/app.yaml); a failed app is recorded and the next one still runs.
+# - Check mode changes nothing: plans are computed and recorded as "would upgrade".
+#
+# Results go to the run summary (run_report record) and to update_truenas_apps_results, one dict per handled app:
+# name, custom, action (upgrade|held_back|none|pull), status (upgraded|would_upgrade|pulled|would_pull|held_back|
+# up_to_date|failed), stage (plan|upgrade|pull), current/target/latest_human_version, reason, error.
+#
+# TrueNAS API fields are read only in the "Parse ..." tasks (here and in app.yaml) and in the
+# truenas_upgrade_plan filter (app.upgrade_summary), so corrections stay local.
+
+- name: Prepare midclt calls
+  ansible.builtin.set_fact:
+    update_truenas_apps_call: >-
+      {{ (update_truenas_apps_midclt.split() if update_truenas_apps_midclt is string else update_truenas_apps_midclt)
+         + ['call'] }}
+    update_truenas_apps_apps: []
+    update_truenas_apps_results: []
+
+- name: Sync the app catalog
+  ansible.builtin.command:
+    argv: "{{ update_truenas_apps_call + update_truenas_apps_job_args + ['catalog.sync'] }}"
+  register: update_truenas_apps_catalog_sync
+  changed_when: false # refreshes the catalog cache only
+  failed_when: false # a stale catalog only means missed upgrades, reported below
+  timeout: "{{ update_truenas_apps_job_timeout }}"
+  when: update_truenas_apps_sync_catalog | bool
+
+- name: Query installed apps
+  block:
+    - name: Query installed apps
+      ansible.builtin.command:
+        argv: "{{ update_truenas_apps_call + ['app.query', [] | to_json, {'extra': {'retrieve_config': false}} | to_json] }}"
+      register: update_truenas_apps_query
+      changed_when: false
+      check_mode: false
+
+    # API fields of an app.query item
+    - name: Parse installed apps
+      ansible.builtin.set_fact:
+        update_truenas_apps_apps: >-
+          {{ update_truenas_apps_apps + [{
+               'name': item.name,
+               'state': item.state,
+               'custom': item.custom_app | bool,
+               'upgrade_available': item.upgrade_available | bool,
+               'image_updates_available': item.image_updates_available | bool,
+               'human_version': item.human_version,
+               'raw': item}] }}
+      loop: "{{ update_truenas_apps_query.stdout | from_json | sort(attribute='name') }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+  rescue:
+    - name: Report failed app query
+      ansible.builtin.include_role:
+        name: run_report
+        tasks_from: record
+      vars:
+        report_level: error
+        report_text: >-
+          app.query failed: {{ (ansible_failed_result.stderr_lines | default([]) | select('match', '^.E[A-Z0-9_]+[]]') | first)
+          | default(ansible_failed_result.stderr_lines | default([]) | select | last, true)
+          | default(ansible_failed_result.msg | default('unknown error'), true) | truncate(200) }}
+        report_todo: "check that '{{ update_truenas_apps_call | join(' ') }} app.query' works for the ansible user"
+
+    - name: Fail on failed app query
+      ansible.builtin.fail:
+        msg: "app.query failed on {{ inventory_hostname }}, no app was updated"
+
+- name: Select apps to update
+  vars:
+    update_truenas_apps_candidates: >-
+      {{ update_truenas_apps_apps | selectattr('upgrade_available') | rejectattr('custom') | list
+         + (update_truenas_apps_apps | selectattr('image_updates_available') | selectattr('custom') | list
+            if update_truenas_apps_pull_custom | bool else []) }}
+  ansible.builtin.set_fact:
+    update_truenas_apps_todo: >-
+      {{ update_truenas_apps_candidates | rejectattr('name', 'in', update_truenas_apps_exclude)
+         | sort(attribute='name') | list }}
+    update_truenas_apps_excluded: >-
+      {{ update_truenas_apps_candidates | selectattr('name', 'in', update_truenas_apps_exclude)
+         | map(attribute='name') | sort | list }}
+
+- name: Update apps one by one
+  ansible.builtin.include_tasks: app.yaml
+  loop: "{{ update_truenas_apps_todo }}"
+  loop_control:
+    loop_var: update_truenas_apps_app
+    label: "{{ update_truenas_apps_app.name }}"
+
+- name: Summarise app updates
+  vars:
+    update_truenas_apps_upgraded: >-
+      {{ update_truenas_apps_results | selectattr('status', 'in', ['upgraded', 'would_upgrade']) | list }}
+    update_truenas_apps_pulled: >-
+      {{ update_truenas_apps_results | selectattr('status', 'in', ['pulled', 'would_pull'])
+         | map(attribute='name') | list }}
+    update_truenas_apps_not_current: >-
+      {{ update_truenas_apps_results | selectattr('status', 'in', ['held_back', 'failed'])
+         | map(attribute='name') | list + update_truenas_apps_excluded }}
+  ansible.builtin.set_fact:
+    update_truenas_apps_summary: >-
+      {%- set parts = [] -%}
+      {%- if update_truenas_apps_upgraded -%}
+        {%- set items = [] -%}
+        {%- for r in update_truenas_apps_upgraded -%}
+          {%- set _ = items.append(r.name ~ ' ' ~ r.current_human_version ~ '→' ~ r.target_human_version) -%}
+        {%- endfor -%}
+        {%- set _ = parts.append(('would upgrade ' if ansible_check_mode else 'upgraded ') ~ (items | join(', '))) -%}
+      {%- endif -%}
+      {%- if update_truenas_apps_pulled -%}
+        {%- set _ = parts.append(('would pull images for ' if ansible_check_mode else 'pulled images for ')
+                                 ~ (update_truenas_apps_pulled | join(', '))) -%}
+      {%- endif -%}
+      {%- if not parts -%}
+        {%- set current = update_truenas_apps_apps | map(attribute='name')
+                          | reject('in', update_truenas_apps_not_current) | list | length -%}
+        {%- set _ = parts.append(current ~ ' apps up to date' if update_truenas_apps_apps else 'no apps installed') -%}
+      {%- endif -%}
+      {%- if update_truenas_apps_excluded -%}
+        {%- set _ = parts.append('excluded with update: ' ~ (update_truenas_apps_excluded | join(', '))) -%}
+      {%- endif -%}
+      {{ parts | join('; ') }}
+
+- name: Report app updates
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: ok
+    report_text: "{{ update_truenas_apps_summary }}"
+
+- name: Report held-back apps
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: warn
+    report_text: >-
+      {{ item.name }} {{ item.latest_human_version }} held back (major),
+      {{ ('staying on ' ~ item.current_human_version) if item.status == 'held_back'
+         else (('would upgrade to ' if ansible_check_mode else 'upgraded to ') ~ item.target_human_version) }}
+    report_todo: "upgrade {{ item.name }} to {{ item.latest_human_version }} manually (major)"
+  # partial upgrades (target below latest) also leave a major behind
+  loop: >-
+    {{ update_truenas_apps_results | selectattr('status', 'eq', 'held_back') | list
+       + update_truenas_apps_results | selectattr('status', 'in', ['upgraded', 'would_upgrade']) | selectattr('partial') | list }}
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Report failed apps
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: error
+    report_text: "{{ item.name }}: {{ item.stage }} failed: {{ item.error }}"
+    report_todo: >-
+      {{ ('task ansible:truenas:rollback APP=' ~ item.name) if item.stage == 'upgrade'
+         else ('check custom app ' ~ item.name ~ ' in Apps (app.pull_images failed)') if item.stage == 'pull'
+         else ('check ' ~ item.name ~ ' (app.upgrade_summary / upgrade plan failed, nothing was changed)') }}
+  loop: "{{ update_truenas_apps_results | selectattr('status', 'eq', 'failed') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Report failed catalog sync
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: warn
+    report_text: >-
+      catalog.sync failed: {{ (update_truenas_apps_catalog_sync.stderr_lines | default([]) | select('match', '^.E[A-Z0-9_]+[]]') | first)
+      | default(update_truenas_apps_catalog_sync.stderr_lines | default([]) | select | last, true)
+      | default(update_truenas_apps_catalog_sync.msg | default('unknown error'), true) | truncate(200) }}
+    report_todo: "check the app catalog in Apps → Discover (upgrades may have been missed)"
+  when: update_truenas_apps_catalog_sync.rc | default(0) != 0
+
+- name: Read TrueNAS update status
+  ansible.builtin.command:
+    argv: "{{ update_truenas_apps_call + ['update.status'] }}"
+  register: update_truenas_apps_update_status
+  changed_when: false
+  failed_when: false # a failed check is reported as a warning
+  check_mode: false
+
+# API fields of update.status (25.10): code NORMAL|ERROR, status.new_version.version, error.errname/reason
+- name: Parse TrueNAS update status
+  vars:
+    update_truenas_apps_os_raw: >-
+      {{ update_truenas_apps_update_status.stdout | from_json
+         if update_truenas_apps_update_status.rc == 0 and update_truenas_apps_update_status.stdout | trim is match('[{]')
+         else {} }}
+  ansible.builtin.set_fact:
+    update_truenas_apps_os_ok: "{{ update_truenas_apps_os_raw.code | default('') == 'NORMAL' }}"
+    update_truenas_apps_os_version: >-
+      {{ ((update_truenas_apps_os_raw.status | default({}, true)).new_version | default({}, true)).version | default('') }}
+    update_truenas_apps_os_error: >-
+      {{ (update_truenas_apps_os_raw.error | default({}, true)).reason
+         | default((update_truenas_apps_os_raw.error | default({}, true)).errname, true)
+         | default(update_truenas_apps_update_status.stderr_lines | default([]) | select('match', '^.E[A-Z0-9_]+[]]') | first, true)
+         | default(update_truenas_apps_update_status.stderr_lines | default([]) | select | last, true)
+         | default('unexpected update.status result', true) | truncate(200) }}
+
+- name: Report available TrueNAS update
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: warn
+    report_text: "TrueNAS {{ update_truenas_apps_os_version }} available"
+    report_todo: "install TrueNAS {{ update_truenas_apps_os_version }} via System → Update"
+  when: update_truenas_apps_os_ok and update_truenas_apps_os_version | length > 0
+
+- name: Report failed TrueNAS update check
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: warn
+    report_text: "could not check for TrueNAS updates: {{ update_truenas_apps_os_error }}"
+    report_todo: "check System → Update"
+  when: not update_truenas_apps_os_ok
