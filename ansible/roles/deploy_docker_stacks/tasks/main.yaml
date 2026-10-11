@@ -36,12 +36,13 @@
 
     - name: Run docker compose {{ docker_state }}
       vars:
-        deploy_docker_stacks_cmds:
-          up: ["up -d"]
-          down: ["down"]
-          restart: ["restart"]
-          pull: ["pull", "up -d --remove-orphans"]
-      ansible.builtin.shell: "docker compose {{ deploy_docker_stacks_cmds[docker_state] | join(' && docker compose ') }}"
+        deploy_docker_stacks_args:
+          up: [up, -d]
+          down: [down]
+          restart: [restart]
+          pull: [up, -d, --pull, always, --remove-orphans]
+      ansible.builtin.command:
+        argv: "{{ ['docker', 'compose'] + deploy_docker_stacks_args[docker_state] }}"
       args:
         chdir: "{{ item }}"
       loop: "{{ deploy_docker_stacks_dirs }}"
