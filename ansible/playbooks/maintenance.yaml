@@ -1,0 +1,16 @@
+---
+# Weekly maintenance run: Proxmox (preflight -> guests one at a time, PBS last -> PVE host)
+# -> TrueNAS apps -> one Discord summary for the whole run (also under --limit).
+# TrueNAS runs even when a guest update failed. See include/proxmox_update.yaml,
+# include/truenas_update.yaml and include/run_summary.yaml.
+
+- name: Proxmox updates
+  ansible.builtin.import_playbook: include/proxmox_update.yaml
+
+- name: TrueNAS app updates
+  ansible.builtin.import_playbook: include/truenas_update.yaml
+
+- name: Run summary
+  ansible.builtin.import_playbook: include/run_summary.yaml
+  vars:
+    run_report_title: Maintenance
