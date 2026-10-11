@@ -38,7 +38,7 @@
         preflight_backup_check_status: >-
           {%- if not preflight_backup_check_newest -%}missing
           {%- elif (preflight_backup_check_newest.verification.state | default('')) == 'failed' -%}verify_failed
-          {%- elif (now().timestamp() - (preflight_backup_check_newest.ctime | int)) > (preflight_backup_check_max_age_hours * 3600) -%}stale
+          {%- elif (now().timestamp() - (preflight_backup_check_newest.ctime | int)) > (preflight_backup_check_max_age_hours | float * 3600) -%}stale
           {%- else -%}ok
           {%- endif -%}
 
