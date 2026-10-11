@@ -59,6 +59,9 @@ control_node_config_dir: "/etc/homelab"
 control_node_state_dir: "/var/lib/homelab"
 control_node_service_timeout: "6h"
 control_node_notify_journal_lines: 30
+# <prefix>.<unit>: touched by the playbook once its run summary is posted (run_report_marker),
+# so homelab-notify skips the duplicate journal message
+control_node_report_marker_prefix: "{{ control_node_state_dir }}/report-sent"
 control_node_units:
   - homelab-maintenance.service
   - homelab-maintenance.timer

@@ -9,5 +9,6 @@ OnFailure=homelab-notify@%n.service
 Type=oneshot
 WorkingDirectory={{ control_repo_path }}
 Environment=HOME=/root
+Environment=HOMELAB_REPORT_MARKER={{ control_node_report_marker_prefix }}.%n
 TimeoutStartSec={{ control_node_service_timeout }}
 ExecStart=/usr/bin/flock {{ control_node_lock_file }} /usr/local/bin/homelab-deploy

@@ -7,6 +7,9 @@ set -eu
 
 state_file="{{ control_node_state_dir }}/deployed-sha"
 
+# Set by the unit; the playbook touches it once its summary is posted (see homelab-notify)
+rm -f "${HOMELAB_REPORT_MARKER:-/nonexistent}"
+
 cd "{{ control_repo_path }}"
 git pull --ff-only
 
@@ -19,5 +22,6 @@ if [ "$head" = "$deployed" ] && [ "${HOMELAB_DEPLOY_FORCE:-0}" != "1" ]; then
 fi
 
 echo "Deploying ${deployed:-<none>} -> ${head}"
-task ansible:docker:deploy -- -e sync_pull_remote=false
+# Daily run: only post the summary when something is not green
+task ansible:docker:deploy -- -e sync_pull_remote=false -e run_report_notify=not_ok
 printf '%s\n' "$head" > "$state_file"

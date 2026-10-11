@@ -2,9 +2,16 @@
 # {{ ansible_managed }}
 # Usage: homelab-notify <unit>
 # Posts the last journal lines of <unit> to Discord. Never fails the caller.
+# Skipped when the playbook already posted its run summary (marker touched via
+# HOMELAB_REPORT_MARKER), so a red summary is not followed by a journal dump.
 set -u
 
 unit="${1:?usage: homelab-notify <unit>}"
+
+if [ -e "{{ control_node_report_marker_prefix }}.${unit}" ]; then
+    echo "Run summary for ${unit} already posted, skipping notification"
+    exit 0
+fi
 
 if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
     echo "DISCORD_WEBHOOK_URL not set, skipping notification for ${unit}"
