@@ -36,8 +36,6 @@
       register: notify_discord_result
       failed_when: false
       changed_when: false
-      # uri has no check mode support and would be skipped; --check runs should still report
-      check_mode: false
       no_log: true
 
     - name: Report failed Discord delivery
