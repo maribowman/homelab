@@ -1,0 +1,42 @@
+version: "3"
+
+tasks:
+  update:
+    desc: "Run TrueNAS app updates"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" {{.CLI_ARGS}}
+
+  check:
+    desc: "Dry-run TrueNAS app updates (--check --diff)"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" --check --diff {{.CLI_ARGS}}
+
+  rollback:
+    desc: "Roll a TrueNAS app back to its previous version (APP=<name> [VERSION=<v>])"
+    silent: true
+    deps: [":init"]
+    prompt: "Roll TrueNAS app {{.APP}} back to {{if .VERSION}}version {{.VERSION}}{{else}}its previous version{{end}}?"
+    requires:
+      vars: [APP]
+    vars:
+      ROLLBACK_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_rollback.yaml"}}'
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.ROLLBACK_PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      --extra-vars "app={{.APP}}" {{if .VERSION}}--extra-vars "version={{.VERSION}}"{{end}} {{.CLI_ARGS}}
+
+  syntax:
+    desc: "Check TrueNAS playbooks"
+    silent: true
+    deps: [":init"]
+    vars:
+      ROLLBACK_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_rollback.yaml"}}'
+    cmds:
+      - '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
+      - '"{{.VENV}}/bin/ansible-playbook" "{{.ROLLBACK_PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'

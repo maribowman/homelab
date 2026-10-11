@@ -36,7 +36,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r ansible/requirements.txt ansible-lint yamllint
+          pip install -r ansible/requirements.txt ansible-lint yamllint pytest
 
       - name: Install Ansible collections
         run: ansible-galaxy collection install -r ansible/requirements.yaml
@@ -61,6 +61,9 @@ jobs:
 
       - name: ansible-lint
         run: ansible-lint
+
+      - name: pytest
+        run: pytest ansible/tests -q
 
       - name: Syntax-check playbooks
         working-directory: ansible

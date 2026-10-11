@@ -1,0 +1,24 @@
+version: "3"
+
+tasks:
+  run:
+    desc: "Run the weekly maintenance (Proxmox updates + TrueNAS apps, one summary)"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" {{.CLI_ARGS}}
+
+  check:
+    desc: "Dry-run the weekly maintenance (--check --diff)"
+    silent: true
+    deps: [":init"]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" --check --diff {{.CLI_ARGS}}
+
+  syntax:
+    desc: "Check the maintenance playbook"
+    silent: true
+    deps: [":init"]
+    cmd: '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
