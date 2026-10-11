@@ -13,6 +13,7 @@
 # Collects `run_report_entries` of every host (see tasks/record.yaml). Hosts that dropped
 # out of the run (failed or unreachable in an earlier play) without an error entry get one.
 # The worst entry sets the embed color (ok green, warn amber, error red). Fails the run when red.
+# Check runs (--check) are never sent: the summary is only printed.
 
 - name: Collect run report
   tags: [always]
@@ -69,6 +70,13 @@
       {{ (run_report_host_block | truncate(run_report_host_budget | int, true, run_report_cut_marker, 0) ~ run_report_todo_block)
          if run_report_rows else 'Nothing to do.' }}
 
+# Check runs change nothing, so they are not reported to Discord; the summary is only shown here
+- name: Show run summary (check mode, not sent)
+  tags: [always]
+  ansible.builtin.debug:
+    msg: "{{ [run_report_title ~ ': ' ~ run_report_level] + run_report_message.split('\n') }}"
+  when: ansible_check_mode
+
 - name: Send run summary
   tags: [always]
   vars:
@@ -76,12 +84,14 @@
       {{ run_report_title }}: {{
          {'ok': 'ok',
           'warn': 'done, ' ~ run_report_todo_count ~ ' todo' ~ ('' if run_report_todo_count | int == 1 else 's'),
-          'error': 'FAILED'}[run_report_level] }}{{ ' (check mode)' if ansible_check_mode else '' }}
+          'error': 'FAILED'}[run_report_level] }}
     notify_message: "{{ run_report_message }}"
     notify_level: "{{ run_report_notify_levels[run_report_level] }}"
   ansible.builtin.include_role:
     name: notify_discord
-  when: run_report_notify != 'not_ok' or run_report_level != 'ok'
+  when:
+    - not ansible_check_mode
+    - run_report_notify != 'not_ok' or run_report_level != 'ok'
 
 - name: Mark the run summary as sent
   tags: [always]
@@ -94,6 +104,7 @@
   check_mode: false
   when:
     - run_report_marker | length > 0
+    - not ansible_check_mode
     - run_report_notify != 'not_ok' or run_report_level != 'ok'
 
 - name: Fail the run when something failed
