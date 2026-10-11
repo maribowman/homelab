@@ -45,7 +45,9 @@ task ansible:control:syntax
 | Sun 04:00 | `git pull` → `proxmox:update` | `homelab-maintenance.timer` on `lxc-ansible` |
 | Continuous | Renovate PRs; patch/minor/digest automerge when CI is green | GitHub (`renovate.json`, `.github/workflows/ci.yaml`) |
 
-Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.service`, which posts the last 30 journal lines to Discord.
+Every playbook run ends in **one** Discord summary (`run_report`); its embed color is the worst result: green ok, yellow done with time-uncritical todos (e.g. PVE reboot pending, stale backup), red failed with manual todos (e.g. the rollback command). The daily deploy only posts when not green (`-e run_report_notify=not_ok`); the weekly run always posts.
+
+Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.service`, which posts the last 30 journal lines to Discord, unless the playbook already posted its summary (marker `/var/lib/homelab/report-sent.<unit>`, passed as `HOMELAB_REPORT_MARKER`). So the journal dump only shows up for failures before the summary (git pull, venv, aborted run).
 
 ## Architecture
 
@@ -62,9 +64,10 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 
 | Playbook | What it does |
 |---|---|
-| `proxmox.yaml` | Preflight backup check → guests `serial: 1` (snapshot, docker down, apt, reboot, docker up + health) → PBS → PVE host (upgrade, never reboots, warns when a reboot is pending) → one Discord summary. A failed guest stops all further updates (`not_run`) and the run fails after the summary. |
+| `proxmox.yaml` | Preflight backup check → guests `serial: 1` (snapshot, docker down, apt, reboot, docker up + health) → PBS → PVE host (upgrade, never reboots, warns when a reboot is pending) → one Discord summary. A failed guest stops all further updates (`not_run`) and the run fails after the summary. Imports `include/proxmox_update.yaml` + `include/run_summary.yaml`. |
 | `rollback.yaml` | `-e target=<host>` [`-e snapshot=<name>`]: rolls back to the newest `pre_update_*` snapshot and starts the guest. |
-| `docker.yaml` | `sync_docker_stacks` (tag `sync`) then `deploy_docker_stacks` (tag `deploy`). |
+| `docker.yaml` | `sync_docker_stacks` (tag `sync`) then `deploy_docker_stacks` (tag `deploy`) → one Discord summary (`Docker deploy`). |
+| `include/*.yaml` | Fragments for `import_playbook` (not run directly): `proxmox_update.yaml` (preflight, guests, PBS, PVE) and `run_summary.yaml` (sends the run summary, fails the run when red; import it last, with `run_report_title`). |
 | `backup.yaml` | `pbs_server` on PBS → `pve_backup_jobs` on PVE → `qemu_guest_agent` on Ubuntu VMs. Idempotent: reads JSON state first, changes only on a diff. |
 | `control.yaml` | Play 1 (tag `provision`): create the control LXC. Play 2 (tag `apply`): `ssh_access` + `control_node`. |
 
@@ -73,17 +76,18 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 | Role | What it does |
 |------|-------------|
 | `sync_docker_stacks` | Rsync `docker/stacks/` (local) → `/opt/stacks` (DockerVM), excluding `data/` and `.env*`. Then writes `/opt/stacks/<stack>/.env` (0600) for each stack in the vault dict `docker_stack_env`; stacks not listed keep their `.env` untouched. Pull-back of remote-only stacks excludes `dockge/`, `data/` and `.env*`, gated by `sync_pull_remote` (default `true`; the control node sets it `false`). |
-| `deploy_docker_stacks` | Runs `docker compose` per stack under `dockge_stacks_path` (skips `dockge`). `docker_state`: `up`, `down`, `restart`, `pull` (pull + `up -d --remove-orphans` + health) or `health` (wait until every container is running/healthy). `target_stack` (`""` = all). Failures → one Discord error, then fail. |
+| `deploy_docker_stacks` | Runs `docker compose` per stack under `dockge_stacks_path` (skips `dockge`). `docker_state`: `up`, `down`, `restart`, `pull` (pull + `up -d --remove-orphans` + health) or `health` (wait until every container is running/healthy). `target_stack` (`""` = all). Results are recorded for the run summary (`pull`/`restart` success, any failure), then a failure fails the task. |
 | `snapshot_proxmox_machines` | Snapshot `{{ snapshot_prefix }}_YYYYMMDD_HHMM` via the PVE API, keeps `snapshot_retention`. |
 | `update_proxmox_machines` | `apt dist-upgrade` + autoremove, reboots if `/var/run/reboot-required` exists, records package count. |
 | `update_pve_host` | Asserts a PVE repo is configured, `apt dist-upgrade`, never reboots; detects pending reboot (kernel, `needrestart -b`, reboot-required). |
-| `preflight_backup_check` | Warns (never blocks) when a guest's newest PBS backup is missing, older than 36h, or the last vzdump task failed. |
+| `preflight_backup_check` | Records warnings (never blocks) when a guest's newest PBS backup is missing, older than 36h, or the last vzdump task failed. |
 | `pbs_server` | CIFS mount of the Synology share, datastore, `proxmox@pbs` user/ACL, prune/GC/verify jobs, Discord webhook notification. |
 | `pve_backup_jobs` | PBS storage (fingerprint read from PBS), vzdump job (all except `backup_exclude_vmids`, snapshot, zstd), Discord webhook + matcher for backup failures. |
 | `qemu_guest_agent` | Installs and starts `qemu-guest-agent` (needs `agent: 1` on the VM). |
 | `control_node` | Provisions the control LXC; installs git/go-task, GitHub deploy key, clones the repo to `control_repo_path`, copies the vault, unattended-upgrades (reboot 06:00), systemd timers and notify unit. |
 | `ssh_access` | Generates root's SSH key on the control node and authorizes it on all other hosts. |
-| `notify_discord` | Posts one embed (`notify_title`, `notify_message`, `notify_level` info/warn/error, `notify_run_once`) to `discord_webhook_url`. Runs on localhost, never fails the play, skips when the URL is unset. |
+| `run_report` | One summary per run. `tasks_from: record` (`report_level` ok/warn/error, `report_text`, `report_todo`, optional `report_host`) appends to the host fact `run_report_entries` and sends nothing; `tasks_from: send` (via `include/run_summary.yaml`) posts one message: worst level as color, one line per host, a Todo section, and implicit errors for hosts that dropped out. `run_report_notify: not_ok` skips green runs. |
+| `notify_discord` | Only used by `run_report` and `rollback.yaml`. Posts one embed (`notify_title`, `notify_message`, `notify_level` info/warn/error, `notify_run_once`) to `discord_webhook_url`. Runs on localhost, never fails the play, skips when the URL is unset. |
 
 ### Docker Stacks (`docker/stacks/`)
 

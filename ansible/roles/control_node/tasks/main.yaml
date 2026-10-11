@@ -39,7 +39,8 @@
     src: "{{ control_node_deploy_key_path }}.pub"
   register: _control_node_deploy_pubkey
 
-- name: Wait for the deploy key to be added to GitHub
+# Not a handler: the clone below needs the key, handlers would only run at the end of the play
+- name: Wait for the deploy key to be added to GitHub # noqa: no-handler
   ansible.builtin.pause:
     prompt: |-
       Add this key as a READ-ONLY deploy key to the GitHub repo

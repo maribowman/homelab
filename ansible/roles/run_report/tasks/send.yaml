@@ -1,0 +1,114 @@
+---
+# Sends the one summary message of a run. Include once per run:
+#
+#   - ansible.builtin.include_role:
+#       name: run_report
+#       tasks_from: send
+#       apply:
+#         run_once: true
+#     run_once: true
+#
+# Nothing connects to the managed hosts: notify_discord and the marker run on localhost.
+#
+# Collects `run_report_entries` of every host (see tasks/record.yaml). Hosts that dropped
+# out of the run (failed or unreachable in an earlier play) without an error entry get one.
+# The worst entry sets the embed color (ok green, warn amber, error red). Fails the run when red.
+# Check runs (--check) are never sent: the summary is only printed.
+
+- name: Collect run report
+  tags: [always]
+  vars:
+    run_report_dropped: "{{ ansible_play_hosts_all | difference(ansible_play_hosts) }}"
+  ansible.builtin.set_fact:
+    run_report_rows: >-
+      {%- set rows = [] -%}
+      {%- for h in groups['all'] -%}
+        {%- set entries = hostvars[h].run_report_entries | default([]) -%}
+        {%- if h in run_report_dropped and entries | selectattr('level', 'eq', 'error') | list | length == 0 -%}
+          {%- set entries = entries + [{'level': 'error', 'text': 'no result (unreachable or failed)', 'todo': 'check the run log'}] -%}
+        {%- endif -%}
+        {%- if entries | length > 0 -%}
+          {%- set levels = entries | map(attribute='level') | list -%}
+          {%- set _ = rows.append({
+                'host': h,
+                'level': 'error' if 'error' in levels else ('warn' if 'warn' in levels else 'ok'),
+                'texts': entries | map(attribute='text') | select | list,
+                'todos': entries | map(attribute='todo') | select | list}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ rows }}
+
+- name: Build run summary
+  tags: [always]
+  vars:
+    run_report_levels_seen: "{{ run_report_rows | map(attribute='level') | list }}"
+    run_report_todo_lines: >-
+      {%- set lines = [] -%}
+      {%- for row in run_report_rows -%}
+        {%- for todo in row.todos -%}
+          {%- set _ = lines.append('• ' ~ row.host ~ ': ' ~ todo) -%}
+        {%- endfor -%}
+      {%- endfor -%}
+      {{ lines }}
+    run_report_host_lines: >-
+      {%- set lines = [] -%}
+      {%- for row in run_report_rows -%}
+        {%- set _ = lines.append(row.host ~ ((' — ' ~ (row.texts | join('; '))) if row.texts else '')) -%}
+      {%- endfor -%}
+      {{ lines }}
+    run_report_todo_block: "{{ ('\n\n**Todo**\n' ~ (run_report_todo_lines | join('\n'))) if run_report_todo_lines else '' }}"
+    # The Todo section is always kept whole; host lines are cut first
+    run_report_host_budget: "{{ [run_report_max_chars | int - (run_report_todo_block | length), 200] | max }}"
+    run_report_host_block: "{{ run_report_host_lines | join('\n') }}"
+    run_report_cut_marker: "\n…"
+  ansible.builtin.set_fact:
+    run_report_level: >-
+      {{ 'error' if 'error' in run_report_levels_seen else ('warn' if 'warn' in run_report_levels_seen else 'ok') }}
+    run_report_todo_count: "{{ run_report_todo_lines | length }}"
+    run_report_failed_hosts: "{{ run_report_rows | selectattr('level', 'eq', 'error') | map(attribute='host') | list }}"
+    run_report_message: >-
+      {{ (run_report_host_block | truncate(run_report_host_budget | int, true, run_report_cut_marker, 0) ~ run_report_todo_block)
+         if run_report_rows else 'Nothing to do.' }}
+
+# Check runs change nothing, so they are not reported to Discord; the summary is only shown here
+- name: Show run summary (check mode, not sent)
+  tags: [always]
+  ansible.builtin.debug:
+    msg: "{{ [run_report_title ~ ': ' ~ run_report_level] + run_report_message.split('\n') }}"
+  when: ansible_check_mode
+
+- name: Send run summary
+  tags: [always]
+  vars:
+    notify_title: >-
+      {{ run_report_title }}: {{
+         {'ok': 'ok',
+          'warn': 'done, ' ~ run_report_todo_count ~ ' todo' ~ ('' if run_report_todo_count | int == 1 else 's'),
+          'error': 'FAILED'}[run_report_level] }}
+    notify_message: "{{ run_report_message }}"
+    notify_level: "{{ run_report_notify_levels[run_report_level] }}"
+  ansible.builtin.include_role:
+    name: notify_discord
+  when:
+    - not ansible_check_mode
+    - run_report_notify != 'not_ok' or run_report_level != 'ok'
+
+- name: Mark the run summary as sent
+  tags: [always]
+  ansible.builtin.file:
+    path: "{{ run_report_marker }}"
+    state: touch
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  when:
+    - run_report_marker | length > 0
+    - not ansible_check_mode
+    - run_report_notify != 'not_ok' or run_report_level != 'ok'
+
+- name: Fail the run when something failed
+  tags: [always]
+  ansible.builtin.fail:
+    msg: "Failed on: {{ run_report_failed_hosts | join(', ') }}"
+  when: run_report_level == 'error'

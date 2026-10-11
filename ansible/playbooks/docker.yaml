@@ -1,4 +1,8 @@
 ---
+# Sync the docker stacks to the docker hosts and deploy them (docker_state, default restart),
+# then send one Discord summary. The daily timer passes -e run_report_notify=not_ok, so
+# it only posts when something is not green.
+
 - name: Deploy Docker stacks
   hosts: docker_hosts
   become: true
@@ -6,8 +10,35 @@
   vars:
     local_stacks_path: "{{ playbook_dir }}/../../docker/stacks"
 
-  roles:
-    - role: sync_docker_stacks
-      tags: [sync]
-    - role: deploy_docker_stacks
-      tags: [deploy]
+  tasks:
+    - name: Sync and deploy docker stacks
+      block:
+        - name: Sync docker stacks
+          ansible.builtin.import_role:
+            name: sync_docker_stacks
+          tags: [sync]
+
+        - name: Deploy docker stacks
+          ansible.builtin.import_role:
+            name: deploy_docker_stacks
+          tags: [deploy]
+      rescue:
+        # deploy_docker_stacks records its own failures; anything else (e.g. sync) is recorded here
+        - name: Report failure
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: error
+            report_text: >-
+              '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.msg | default('unknown error') }}
+            report_todo: "check the run log and re-run task ansible:docker:deploy"
+          tags: [always]
+          when: >-
+            run_report_entries | default([]) | selectattr('level', 'eq', 'error') | list | length == 0
+
+- name: Run summary
+  ansible.builtin.import_playbook: include/run_summary.yaml
+  vars:
+    run_report_title: Docker deploy

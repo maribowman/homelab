@@ -1,0 +1,27 @@
+---
+# One Discord message for the whole run (roles/run_report). Import it last:
+#
+#   - name: Run summary
+#     ansible.builtin.import_playbook: include/run_summary.yaml
+#     vars:
+#       run_report_title: Maintenance
+#
+# Runs on the managed hosts (not localhost) so it also runs under --limit and can tell
+# which hosts dropped out of the run; the message itself is sent once, from localhost.
+# Fails the run when the summary is red.
+
+- name: Run summary
+  hosts: all
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Send run summary
+      ansible.builtin.include_role:
+        name: run_report
+        tasks_from: send
+        apply:
+          run_once: true
+          tags: [always]
+      run_once: true
+      tags: [always]

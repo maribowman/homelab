@@ -36,12 +36,13 @@
 
     - name: Run docker compose {{ docker_state }}
       vars:
-        deploy_docker_stacks_cmds:
-          up: ["up -d"]
-          down: ["down"]
-          restart: ["restart"]
-          pull: ["pull", "up -d --remove-orphans"]
-      ansible.builtin.shell: "docker compose {{ deploy_docker_stacks_cmds[docker_state] | join(' && docker compose ') }}"
+        deploy_docker_stacks_args:
+          up: [up, -d]
+          down: [down]
+          restart: [restart]
+          pull: [up, -d, --pull, always, --remove-orphans]
+      ansible.builtin.command:
+        argv: "{{ ['docker', 'compose'] + deploy_docker_stacks_args[docker_state] }}"
       args:
         chdir: "{{ item }}"
       loop: "{{ deploy_docker_stacks_dirs }}"
@@ -83,6 +84,18 @@
       # pull also health-checks, so a deploy only succeeds once the new containers are up
       when: docker_state in ['pull', 'health']
 
+    - name: Report deployed docker stacks
+      ansible.builtin.include_role:
+        name: run_report
+        tasks_from: record
+      vars:
+        report_level: ok
+        report_text: >-
+          {{ {'pull': 'deployed', 'restart': 'restarted'}[docker_state] }}
+          {{ deploy_docker_stacks_dirs | map('basename') | join(', ') }}
+      # up/down/health are steps of the proxmox update, which reports the guest as a whole
+      when: docker_state in ['pull', 'restart']
+
   rescue:
     - name: Collect failed docker stacks
       ansible.builtin.set_fact:
@@ -92,16 +105,20 @@
              | map(attribute='item') | map('basename') | unique | list }}
         deploy_docker_stacks_error: "{{ ansible_failed_result.msg | default('unknown error') }}"
 
-    - name: Notify Discord about failed docker stacks
+    - name: Report failed docker stacks
       ansible.builtin.include_role:
-        name: notify_discord
+        name: run_report
+        tasks_from: record
       vars:
-        notify_title: "Docker {{ docker_state }} failed: {{ inventory_hostname }}"
-        notify_message: >-
-          {{ 'Failed stacks: ' ~ (deploy_docker_stacks_failed | join(', '))
-             if deploy_docker_stacks_failed | length > 0 else deploy_docker_stacks_error }}
-        notify_level: error
+        report_level: error
+        report_text: >-
+          docker {{ docker_state }} failed: {{ ('stacks ' ~ (deploy_docker_stacks_failed | join(', ')))
+          if deploy_docker_stacks_failed | length > 0 else deploy_docker_stacks_error }}
+        report_todo: >-
+          check {{ ('stacks ' ~ (deploy_docker_stacks_failed | join(', '))) if deploy_docker_stacks_failed | length > 0
+          else 'the docker stacks' }} on {{ inventory_hostname }} (docker compose ps / logs)
 
+    # The caller decides what a failure means (proxmox_update rolls back, docker.yaml reports)
     - name: Fail on failed docker stacks
       ansible.builtin.fail:
         msg: >-

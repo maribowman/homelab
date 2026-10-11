@@ -1,0 +1,21 @@
+---
+# Public interface: record (see tasks/record.yaml)
+#   report_level: ok | warn | error
+#   report_text:  short result text, shown on the host's line
+#   report_todo:  manual action ("" = none), listed in the Todo section
+#   report_host:  host the entry belongs to (default: inventory_hostname)
+
+# Public interface: send (see tasks/send.yaml)
+run_report_title: "Homelab"
+run_report_notify: always # always | not_ok (skip the message when everything is green)
+# Touched on localhost after the summary went out, so the systemd OnFailure
+# notification can skip its duplicate message
+run_report_marker: "{{ lookup('ansible.builtin.env', 'HOMELAB_REPORT_MARKER') }}"
+
+# Role internals
+run_report_max_chars: 3900 # Discord embed descriptions are limited to 4096
+run_report_levels: [ok, warn, error] # ascending severity
+run_report_notify_levels: # run_report level -> notify_discord level
+  ok: info
+  warn: warn
+  error: error

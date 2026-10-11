@@ -1,0 +1,30 @@
+---
+# Records one result for the run summary; never sends anything. Usage:
+#
+#   - ansible.builtin.include_role:
+#       name: run_report
+#       tasks_from: record
+#     vars:
+#       report_level: ok                     # ok | warn | error
+#       report_text: "12 packages, rebooted"
+#       report_todo: ""                      # manual action, "" = none
+#
+# Entries are appended to the host fact `run_report_entries` and sent once per run
+# by tasks/send.yaml (playbooks/include/run_summary.yaml).
+
+- name: Validate report_level
+  tags: [always]
+  ansible.builtin.assert:
+    that: report_level | default('') in run_report_levels
+    fail_msg: "report_level must be one of {{ run_report_levels | join(' | ') }}, got '{{ report_level | default('') }}'"
+    quiet: true
+
+- name: Record run report entry
+  tags: [always]
+  ansible.builtin.set_fact:
+    run_report_entries: >-
+      {{ hostvars[report_host | default(inventory_hostname)].run_report_entries | default([])
+         + [{'level': report_level, 'text': report_text | default('') | string | trim,
+             'todo': report_todo | default('') | string | trim}] }}
+  delegate_to: "{{ report_host | default(inventory_hostname) }}"
+  delegate_facts: true

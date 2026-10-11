@@ -1,0 +1,209 @@
+---
+# Proxmox maintenance (imported by proxmox.yaml, followed by include/run_summary.yaml):
+#   1. Preflight: warn when a guest has no recent backup (never blocks the run)
+#   2. Guests one at a time, PBS last:
+#      snapshot -> [docker down] -> apt dist-upgrade -> reboot if needed -> [docker up + health]
+#   3. PVE host: apt dist-upgrade, never rebooted; warns when a reboot is pending
+#
+# Nothing is sent from here: every result is recorded with run_report (record) and the
+# run summary sends one Discord message for the whole run, then fails the run when red.
+#
+# A failed snapshot skips that guest. A failed update records the rollback command and ends
+# that guest; every remaining guest, PBS and the PVE host are then marked not_run.
+#
+# Per-host results: update_proxmox_machines_status (ok | skipped | failed | not_run),
+# update_proxmox_machines_packages, update_pve_host_status, update_pve_host_reboot_pending.
+
+- name: Preflight backup check
+  hosts: guests
+  gather_facts: false
+  become: false
+
+  roles:
+    - role: preflight_backup_check
+
+- name: Update guests
+  hosts: guests:!pbs_hosts
+  serial: 1
+  gather_facts: false
+  become: true
+
+  tasks: &guest_update_tasks
+    - name: Skip guest after an earlier failed update
+      when: >-
+        groups['guests'] | map('extract', hostvars)
+        | selectattr('update_proxmox_machines_status', 'defined')
+        | selectattr('update_proxmox_machines_status', 'eq', 'failed') | list | length > 0
+      block:
+        - name: Record guest not run
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: not_run
+
+        - name: Report guest not run
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: warn
+            report_text: "not run (earlier failure)"
+
+        - name: End guest
+          ansible.builtin.meta: end_host
+
+    - name: Snapshot guest
+      block:
+        - name: Create pre-update snapshot
+          ansible.builtin.include_role:
+            name: snapshot_proxmox_machines
+      rescue:
+        - name: Record skipped guest
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: skipped
+
+        - name: Report snapshot failure
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: error
+            report_text: "snapshot failed, not updated: {{ ansible_failed_result.msg | default('unknown error') }}"
+            report_todo: "fix snapshots for vmid {{ vmid }}, then re-run with --limit {{ inventory_hostname }}"
+
+        - name: Skip guest
+          ansible.builtin.meta: end_host
+
+    - name: Update guest
+      block:
+        - name: Stop docker stacks
+          ansible.builtin.include_role:
+            name: deploy_docker_stacks
+          vars:
+            docker_state: down
+          when: inventory_hostname in groups['docker_hosts']
+
+        - name: Upgrade packages
+          ansible.builtin.include_role:
+            name: update_proxmox_machines
+
+        - name: Start docker stacks
+          ansible.builtin.include_role:
+            name: deploy_docker_stacks
+          vars:
+            docker_state: up
+          when: inventory_hostname in groups['docker_hosts']
+
+        - name: Check docker stack health
+          ansible.builtin.include_role:
+            name: deploy_docker_stacks
+          vars:
+            docker_state: health
+          when: inventory_hostname in groups['docker_hosts']
+
+        - name: Record updated guest
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: ok
+
+        - name: Report updated guest
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: ok
+            report_text: >-
+              {{ update_proxmox_machines_packages }} packages{{
+              ', rebooted' if update_proxmox_machines_rebooted else '' }}{{
+              ', stacks healthy' if inventory_hostname in groups['docker_hosts'] else '' }}
+      rescue:
+        - name: Record failed guest
+          ansible.builtin.set_fact:
+            update_proxmox_machines_status: failed
+
+        - name: Report update failure
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: error
+            report_text: >-
+              '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.msg | default('unknown error') }}
+            report_todo: >-
+              roll back to {{ snapshot_proxmox_machines_snapname | default('the pre-update snapshot') }}:
+              task ansible:proxmox:rollback HOST={{ inventory_hostname }}
+
+        # Not a hard failure, so the run summary still goes out; the summary fails the run
+        - name: Stop updating this guest
+          ansible.builtin.meta: end_host
+
+# Same tasks as above, as a separate play so PBS is always updated last
+- name: Update PBS
+  hosts: pbs_hosts
+  serial: 1
+  gather_facts: false
+  become: true
+
+  tasks: *guest_update_tasks
+
+- name: Update PVE host
+  hosts: proxmox_hosts
+  serial: 1
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Skip PVE host after a failed guest update
+      when: >-
+        groups['guests'] | map('extract', hostvars)
+        | selectattr('update_proxmox_machines_status', 'defined')
+        | selectattr('update_proxmox_machines_status', 'eq', 'failed') | list | length > 0
+      block:
+        - name: Record PVE host not run
+          ansible.builtin.set_fact:
+            update_pve_host_status: not_run
+
+        - name: Report PVE host not run
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: warn
+            report_text: "not run (earlier failure)"
+
+        - name: End PVE host
+          ansible.builtin.meta: end_host
+
+    - name: Update PVE host
+      block:
+        - name: Upgrade packages
+          ansible.builtin.include_role:
+            name: update_pve_host
+
+        - name: Record updated PVE host
+          ansible.builtin.set_fact:
+            update_pve_host_status: ok
+
+        - name: Report updated PVE host
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: "{{ 'warn' if update_pve_host_reboot_pending else 'ok' }}"
+            report_text: "{{ update_pve_host_packages }} packages{{ ', reboot pending' if update_pve_host_reboot_pending else '' }}"
+            report_todo: >-
+              {{ ('reboot when convenient (' ~ (update_pve_host_reboot_reasons | join('; ')) ~ ')')
+                 if update_pve_host_reboot_pending else '' }}
+      rescue:
+        - name: Record failed PVE host
+          ansible.builtin.set_fact:
+            update_pve_host_status: failed
+
+        - name: Report PVE host update failure
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: error
+            report_text: >-
+              '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.msg | default('unknown error') }}
+            report_todo: "check apt on {{ inventory_hostname }}"
