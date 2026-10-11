@@ -1,0 +1,19 @@
+---
+# Apps (by name) that are never upgraded or pulled; they are listed as excluded when an upgrade is available
+update_truenas_apps_exclude: []
+# Pull new images (same tag, new digest) for custom apps and redeploy them
+update_truenas_apps_pull_custom: true
+# Snapshot host path volumes before upgrading a catalog app (app.upgrade option, default false in the API)
+update_truenas_apps_snapshot_hostpaths: true
+# Refresh the app catalog before looking for upgrades (catalog.sync; skipped in check mode)
+update_truenas_apps_sync_catalog: true
+# Wait for an app that was RUNNING before the upgrade/pull to be RUNNING again
+update_truenas_apps_wait_retries: 30
+update_truenas_apps_wait_delay: 10
+# Upper bound (seconds) for one midclt job (catalog.sync, app.upgrade, app.pull_images)
+update_truenas_apps_job_timeout: 1800
+# How midclt is invoked; every call goes through it. A string is split on whitespace (e.g. "sudo -n midclt"),
+# a list is used as is.
+update_truenas_apps_midclt: "midclt"
+# Arguments that make `midclt call` wait for a job; progress goes to stderr, so stdout stays JSON
+update_truenas_apps_job_args: [-j, -jp, description]

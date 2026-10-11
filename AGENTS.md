@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Personal homelab infrastructure managed with [Ansible](https://docs.ansible.com/) and [Taskfile](https://taskfile.dev/). The main host is a Proxmox server (`pve`, 10.0.10.10) running a DockerVM (`vm-docker`, 10.0.40.40), a Tailscale LXC (`lxc-tailscale`, 10.0.40.90), a Proxmox Backup Server LXC (`lxc-pbs`, 10.0.40.20) and a control LXC (`lxc-ansible`) that runs the playbooks on systemd timers. A Synology NAS is at 10.0.40.10 and holds the PBS datastore.
+Personal homelab infrastructure managed with [Ansible](https://docs.ansible.com/) and [Taskfile](https://taskfile.dev/). The main host is a Proxmox server (`pve`, 10.0.10.10) running a DockerVM (`vm-docker`, 10.0.40.40), a Tailscale LXC (`lxc-tailscale`, 10.0.40.90), a Proxmox Backup Server LXC (`lxc-pbs`, 10.0.40.20) and a control LXC (`lxc-ansible`) that runs the playbooks on systemd timers. A Synology NAS is at 10.0.40.10 and holds the PBS datastore. A TrueNAS SCALE 25.10 server (`truenas`) runs apps; Ansible upgrades them weekly.
 
-Git is the source of truth: edits made in the Dockge UI drift and get overwritten. TrueNAS and the Home Assistant instances are out of scope.
+Git is the source of truth: edits made in the Dockge UI drift and get overwritten. TrueNAS OS updates and the Home Assistant instances are out of scope.
 
 ## Common Commands
 
@@ -23,6 +23,17 @@ task ansible:proxmox:check          # Same, with --check --diff
 task ansible:proxmox:rollback HOST=lxc-tailscale  # Roll a guest back to its newest pre_update_* snapshot (confirm, or -y)
 task ansible:proxmox:syntax         # Syntax-check the proxmox and rollback playbooks
 task ansible:proxmox:ping           # Test SSH connectivity to all hosts
+
+# TrueNAS apps
+task ansible:truenas:update         # Upgrade every app to its newest non-major version, pull custom-app images, report majors/OS updates -> summary
+task ansible:truenas:check          # Same, with --check --diff (computes the plans, upgrades nothing)
+task ansible:truenas:rollback APP=immich [VERSION=1.2.3]  # app.rollback to VERSION or the newest rollback version, with snapshot (confirm, or -y)
+task ansible:truenas:syntax
+
+# Weekly maintenance (what the Sunday timer runs)
+task ansible:maintenance:run        # Proxmox update + TrueNAS apps -> one summary
+task ansible:maintenance:check
+task ansible:maintenance:syntax
 
 # Backups (PBS + PVE backup job)
 task ansible:backup:apply           # Configure PBS mount/datastore/jobs/notifications and the PVE storage/vzdump job
@@ -42,7 +53,7 @@ task ansible:control:syntax
 | Daily 01:00 | vzdump of all guests except PBS (1001) → PBS → Synology | native PVE job (`pve_backup_jobs`) |
 | Daily (PBS) | prune (3 last / 3 weekly / 3 monthly), GC, verify | native PBS jobs (`pbs_server`) |
 | Daily 05:00 | `git pull`; if HEAD differs from the last deployed commit → `docker:deploy` | `homelab-deploy.timer` on `lxc-ansible` |
-| Sun 04:00 | `git pull` → `proxmox:update` | `homelab-maintenance.timer` on `lxc-ansible` |
+| Sun 04:00 | `git pull` → `maintenance:run` (Proxmox, then TrueNAS apps) | `homelab-maintenance.timer` on `lxc-ansible` |
 | Continuous | Renovate PRs; patch/minor/digest automerge when CI is green | GitHub (`renovate.json`, `.github/workflows/ci.yaml`) |
 
 Every playbook run ends in **one** Discord summary (`run_report`); its embed color is the worst result: green ok, yellow done with time-uncritical todos (e.g. PVE reboot pending, stale backup), red failed with manual todos (e.g. the rollback command). The daily deploy only posts when not green (`-e run_report_notify=not_ok`); the weekly run always posts.
@@ -55,10 +66,10 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 
 - Venv lives at `ansible/.venv`; all ansible binaries must be invoked via that venv (the Taskfile handles this automatically).
 - Secrets are stored in `ansible/inventory/group_vars/all/vault.yaml` (Ansible Vault). The vault password file is expected at `ansible/inventory/group_vars/all/.vault.pass` (gitignored, must be provisioned locally). Vault keys: `pve_token_secret`, `pbs_user_password` (`proxmox@pbs`), `synology_cifs_password`, `discord_webhook_url`, and `docker_stack_env` (per-stack `.env` contents, e.g. `observability: {GF_SECURITY_ADMIN_PASSWORD: …}`, `timescaledb: {POSTGRES_PASSWORD: …}`). After a vault change, run `control:apply` again so the control node gets the new copy.
-- Inventory groups (`ansible/inventory/hosts.ini`): `proxmox_hosts`, `pbs_hosts`, `ubuntu_nodes`, `debian_nodes`, `docker_hosts`, `control_nodes`, and `guests` (= ubuntu + debian + pbs). Every host except `pve` has a `vmid`. `control_nodes` is deliberately not in `guests`; it updates itself via unattended-upgrades.
+- Inventory groups (`ansible/inventory/hosts.ini`): `proxmox_hosts`, `pbs_hosts`, `ubuntu_nodes`, `debian_nodes`, `docker_hosts`, `control_nodes`, `truenas_hosts`, and `guests` (= ubuntu + debian + pbs). Every host except `pve` has a `vmid`. `control_nodes` is deliberately not in `guests`; it updates itself via unattended-upgrades. `truenas` (`ansible_user=ansible`, no `vmid`) is not in `guests` either and is excluded from `ssh_access` (its keys are managed in the TrueNAS UI).
 - Shared vars are in `ansible/inventory/group_vars/all/vars.yaml`: Proxmox API details, PBS/NAS addresses, backup schedule and retention, snapshot prefix/retention, timer `OnCalendar` values, control-node repo settings, `dockge_stacks_path` (`/opt/stacks` on DockerVM). Role-specific vars live in each role's `defaults/main.yaml`, prefixed with the role name.
 - Collections used: `community.proxmox`, `community.general`, `ansible.posix`.
-- CI (`.github/workflows/ci.yaml`) runs yamllint, ansible-lint (profile `production`), `--syntax-check` of every `ansible/playbooks/*.yaml` with a stub vault, and `docker compose config -q` per stack.
+- CI (`.github/workflows/ci.yaml`) runs yamllint, ansible-lint (profile `production`), `pytest ansible/tests` (TrueNAS version logic), `--syntax-check` of every `ansible/playbooks/*.yaml` with a stub vault, and `docker compose config -q` per stack.
 
 ### Playbooks
 
@@ -66,8 +77,11 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 |---|---|
 | `proxmox.yaml` | Preflight backup check → guests `serial: 1` (snapshot, docker down, apt, reboot, docker up + health) → PBS → PVE host (upgrade, never reboots, warns when a reboot is pending) → one Discord summary. A failed guest stops all further updates (`not_run`) and the run fails after the summary. Imports `include/proxmox_update.yaml` + `include/run_summary.yaml`. |
 | `rollback.yaml` | `-e target=<host>` [`-e snapshot=<name>`]: rolls back to the newest `pre_update_*` snapshot and starts the guest. |
+| `truenas.yaml` | TrueNAS apps (`update_truenas_apps`) → one Discord summary (`TrueNAS`). Imports `include/truenas_update.yaml` + `include/run_summary.yaml`. |
+| `maintenance.yaml` | The Sunday run: `include/proxmox_update.yaml` + `include/truenas_update.yaml` → one Discord summary (`Maintenance`). TrueNAS runs even when a guest update failed. |
+| `truenas_rollback.yaml` | `-e app=<name>` [`-e version=<v>`]: `app.rollback` (with `rollback_snapshot`) to the given version or the newest of `app.rollback_versions`; one Discord message. |
 | `docker.yaml` | `sync_docker_stacks` (tag `sync`) then `deploy_docker_stacks` (tag `deploy`) → one Discord summary (`Docker deploy`). |
-| `include/*.yaml` | Fragments for `import_playbook` (not run directly): `proxmox_update.yaml` (preflight, guests, PBS, PVE) and `run_summary.yaml` (sends the run summary, fails the run when red; import it last, with `run_report_title`). |
+| `include/*.yaml` | Fragments for `import_playbook` (not run directly): `proxmox_update.yaml` (preflight, guests, PBS, PVE), `truenas_update.yaml` (TrueNAS apps) and `run_summary.yaml` (sends the run summary, fails the run when red; import it last, with `run_report_title`). |
 | `backup.yaml` | `pbs_server` on PBS → `pve_backup_jobs` on PVE → `qemu_guest_agent` on Ubuntu VMs. Idempotent: reads JSON state first, changes only on a diff. |
 | `control.yaml` | Play 1 (tag `provision`): create the control LXC. Play 2 (tag `apply`): `ssh_access` + `control_node`. |
 
@@ -85,9 +99,10 @@ Both services share `/run/homelab.lock` and have `OnFailure=homelab-notify@%n.se
 | `pve_backup_jobs` | PBS storage (fingerprint read from PBS), vzdump job (all except `backup_exclude_vmids`, snapshot, zstd), Discord webhook + matcher for backup failures. |
 | `qemu_guest_agent` | Installs and starts `qemu-guest-agent` (needs `agent: 1` on the VM). |
 | `control_node` | Provisions the control LXC; installs git/go-task, GitHub deploy key, clones the repo to `control_repo_path`, copies the vault, unattended-upgrades (reboot 06:00), systemd timers and notify unit. |
-| `ssh_access` | Generates root's SSH key on the control node and authorizes it on all other hosts. |
+| `ssh_access` | Generates root's SSH key on the control node and authorizes it on all other hosts except `truenas`. |
+| `update_truenas_apps` | TrueNAS apps via `midclt` over SSH (`update_truenas_apps_midclt`, default `midclt`): `catalog.sync` → `app.query` → per catalog app with an upgrade `app.upgrade_summary` → `truenas_upgrade_plan` (`filter_plugins/truenas_versions.py`, tests in `ansible/tests`) → `app.upgrade` to the highest non-major version (major = upstream or catalog major changes; `0.x` compares `0.minor`), with a host path snapshot (`update_truenas_apps_snapshot_hostpaths`), then waits until it is `RUNNING` again. Custom apps with image updates get `app.pull_images` (redeploy). One app at a time; a failed app is recorded (todo: `truenas:rollback`) and the next one runs. Majors and a pending OS update (`update.status`) are recorded as warnings; the OS is never updated. `update_truenas_apps_exclude` skips apps. |
 | `run_report` | One summary per run. `tasks_from: record` (`report_level` ok/warn/error, `report_text`, `report_todo`, optional `report_host`) appends to the host fact `run_report_entries` and sends nothing; `tasks_from: send` (via `include/run_summary.yaml`) posts one message: worst level as color, one line per host, a Todo section, and implicit errors for hosts that dropped out. `run_report_notify: not_ok` skips green runs. |
-| `notify_discord` | Only used by `run_report` and `rollback.yaml`. Posts one embed (`notify_title`, `notify_message`, `notify_level` info/warn/error, `notify_run_once`) to `discord_webhook_url`. Runs on localhost, never fails the play, skips when the URL is unset. |
+| `notify_discord` | Only used by `run_report`, `rollback.yaml` and `truenas_rollback.yaml`. Posts one embed (`notify_title`, `notify_message`, `notify_level` info/warn/error, `notify_run_once`) to `discord_webhook_url`. Runs on localhost, never fails the play, skips when the URL is unset. |
 
 ### Docker Stacks (`docker/stacks/`)
 
@@ -112,6 +127,7 @@ Stacks are authored locally and deployed to `/opt/stacks` on the DockerVM via `s
 - Pick the control LXC IP/vmid and fill in the `lxc-ansible` line under `[control_nodes]` in `hosts.ini`.
 - Set `agent: 1` on vmid 101 (`qm set 101 --agent enabled=1`) and fully stop/start the VM.
 - Install the Renovate GitHub App on `maribowman/homelab`; give it read access to the private `ghcr.io/maribowman/roastbeef-swag` package; require CI on `main` via branch protection.
+- TrueNAS: enable the SSH service; create user `ansible` (home directory under a `home` dataset, e.g. `/mnt/MainStorage/home`) with the laptop and control-node public keys set in the UI (keys added to `authorized_keys` by hand are overwritten by the middleware), no sudo. `midclt` authenticates as that Unix user, so give its group a custom privilege (Credentials → Groups → Privileges) with only the roles `APPS_WRITE`, `CATALOG_WRITE` and `SYSTEM_UPDATE_READ`, not "Full Admin". Without a privilege every call fails with `ENOTAUTHENTICATED`. `update_truenas_apps_midclt` (host/group var, read by the rollback playbook too) can switch to `sudo -n midclt` instead. The firewall must allow control LXC → TrueNAS (22).
 - During the first `control:apply`, add the printed deploy key to GitHub (read-only).
 - Inter-VLAN firewall: control LXC → `pve` (22, 8006), all 10.0.40.x hosts (22), github.com (22, 443), discord.com (443); `pve` → PBS (8007); PBS → Synology (445).
 - PBS install and the Synology user/share permissions: see `proxmox-backup-server-setup.md`.

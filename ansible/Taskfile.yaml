@@ -13,6 +13,18 @@ includes:
       VENV: "{{.VENV}}"
       VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
       PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/proxmox.yaml"
+  truenas:
+    taskfile: ./taskfiles/truenas.yaml
+    vars:
+      VENV: "{{.VENV}}"
+      VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
+      PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/truenas.yaml"
+  maintenance:
+    taskfile: ./taskfiles/maintenance.yaml
+    vars:
+      VENV: "{{.VENV}}"
+      VAULT_PWD_FILE: "{{.VAULT_PWD_FILE}}"
+      PLAYBOOK: "{{.REPO_ROOT}}/ansible/playbooks/maintenance.yaml"
   docker:
     taskfile: ./taskfiles/docker.yaml
     vars:

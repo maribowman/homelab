@@ -27,7 +27,7 @@ Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the play
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Daily 01:00 | Native PVE backup of all guests to PBS (datastore on the Synology); PBS prunes, garbage-collects and verifies                         |
 | Daily 05:00 | `git pull`; redeploy the Docker stacks if the repo changed                                                                            |
-| Sun 04:00   | Snapshot → update every guest one at a time (PBS last) → health check → upgrade the PVE host (never rebooted automatically) → summary |
+| Sun 04:00   | Snapshot → update every guest one at a time (PBS last) → health check → upgrade the PVE host (never rebooted automatically) → upgrade TrueNAS apps (non-major only; majors and TrueNAS OS updates become todos) → summary |
 | Continuous  | Renovate PRs for image updates; patch/minor automerge when CI is green                                                                |
 
 ## Setup
@@ -78,6 +78,12 @@ Dependencies (venv, collections) are installed automatically on first use. Extra
 | `task ansible:proxmox:rollback HOST=<host>` | Roll a guest back to its newest pre-update snapshot                         |
 | `task ansible:proxmox:ping`                 | Test SSH connectivity to all hosts                                          |
 | `task ansible:proxmox:syntax`               | Syntax-check the Proxmox playbooks                                          |
+| `task ansible:maintenance:run`             | The Sunday run: Proxmox update, then TrueNAS apps, one summary              |
+| `task ansible:maintenance:check`           | Dry-run of the above                                                        |
+| `task ansible:truenas:update`              | Upgrade TrueNAS apps to their newest non-major version, summary             |
+| `task ansible:truenas:check`               | Dry-run of the above (shows the plans, upgrades nothing)                    |
+| `task ansible:truenas:rollback APP=<app>`  | Roll a TrueNAS app back (optional `VERSION=<v>`), with its snapshot         |
+| `task ansible:truenas:syntax`              | Syntax-check the TrueNAS playbooks                                          |
 | `task ansible:docker:deploy`                | Sync stacks, write `.env` files, pull pinned images, `up -d`, health check  |
 | `task ansible:docker:restart STACK=<stack>` | Restart a single stack                                                      |
 | `task ansible:backup:apply`                 | Configure PBS (datastore, jobs, notifications) and the PVE backup job       |

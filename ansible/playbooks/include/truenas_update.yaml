@@ -1,0 +1,33 @@
+---
+# TrueNAS app updates (imported by truenas.yaml and maintenance.yaml, followed by
+# include/run_summary.yaml): every non-major catalog app upgrade, image pulls for custom
+# apps, majors and OS updates recorded as todos. See roles/update_truenas_apps.
+#
+# Independent of the Proxmox part: TrueNAS is not in guests, so a failed guest update
+# does not skip it. Nothing is sent from here; results are recorded with run_report.
+
+- name: Update TrueNAS apps
+  hosts: truenas_hosts
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Update TrueNAS apps
+      block:
+        - name: Upgrade apps
+          ansible.builtin.include_role:
+            name: update_truenas_apps
+      rescue:
+        # update_truenas_apps records per-app failures itself; anything else (e.g. the app query) is recorded here
+        - name: Report failure
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: error
+            report_text: >-
+              '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.msg | default('unknown error') }}
+            report_todo: "check the run log and re-run task ansible:truenas:update"
+          # a failed app query is already recorded by the role
+          when: ansible_failed_task.name | default('') != 'Fail on failed app query'

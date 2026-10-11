@@ -1,0 +1,11 @@
+---
+# TrueNAS app updates on their own -> one Discord summary.
+# See include/truenas_update.yaml for the update flow and include/run_summary.yaml for the summary.
+
+- name: TrueNAS app updates
+  ansible.builtin.import_playbook: include/truenas_update.yaml
+
+- name: Run summary
+  ansible.builtin.import_playbook: include/run_summary.yaml
+  vars:
+    run_report_title: TrueNAS

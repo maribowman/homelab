@@ -1,0 +1,78 @@
+---
+# Roll a TrueNAS app back to an earlier version (app.rollback, with a snapshot of its ix-volumes):
+#   task ansible:truenas:rollback APP=immich [VERSION=1.2.3]
+#   ansible-playbook playbooks/truenas_rollback.yaml -e app=immich [-e version=1.2.3]
+#
+# Without a version, the newest entry of app.rollback_versions is used, i.e. the version
+# before the last upgrade. Versions are catalog app versions (app.query `version`), not
+# human versions. midclt is called through update_truenas_apps_midclt (e.g. "sudo -n midclt").
+
+- name: Roll back TrueNAS app
+  hosts: truenas_hosts
+  gather_facts: false
+  become: false
+
+  vars:
+    truenas_rollback_midclt: "{{ (update_truenas_apps_midclt | default('midclt')) | split }}"
+
+  tasks:
+    - name: Validate app
+      ansible.builtin.assert:
+        that:
+          - app is defined
+          - app | string | length > 0
+        fail_msg: "Pass -e app=<name> [-e version=<catalog version>]"
+        quiet: true
+
+    - name: Roll back app
+      block:
+        - name: List rollback versions
+          ansible.builtin.command:
+            argv: "{{ truenas_rollback_midclt + ['call', 'app.rollback_versions', app] }}"
+          register: truenas_rollback_versions
+          changed_when: false
+          check_mode: false
+          when: version is not defined
+
+        # app.rollback_versions does not document an order: sort by version, take the newest
+        - name: Pick version
+          ansible.builtin.set_fact:
+            truenas_rollback_version: >-
+              {{ (version | string) if version is defined
+                 else (truenas_rollback_versions.stdout | from_json | community.general.version_sort | last | default('')) }}
+
+        - name: Assert a version was found
+          ansible.builtin.assert:
+            that: truenas_rollback_version | length > 0
+            fail_msg: "No rollback version found for app {{ app }}"
+            quiet: true
+
+        - name: Roll back to version
+          ansible.builtin.command:
+            argv: >-
+              {{ truenas_rollback_midclt + ['call', '-j', 'app.rollback', app,
+                 {'app_version': truenas_rollback_version, 'rollback_snapshot': true} | to_json] }}
+          register: truenas_rollback_result
+          changed_when: true
+
+        - name: Notify rollback
+          ansible.builtin.include_role:
+            name: notify_discord
+          vars:
+            notify_title: "TrueNAS rollback: {{ app }}"
+            notify_message: "Rolled back to version {{ truenas_rollback_version }}"
+            notify_level: info
+      rescue:
+        - name: Notify failed rollback
+          ansible.builtin.include_role:
+            name: notify_discord
+          vars:
+            notify_title: "TrueNAS rollback: {{ app }}"
+            notify_message: >-
+              '{{ ansible_failed_task.name | default('unknown') }}' failed:
+              {{ ansible_failed_result.stderr | default(ansible_failed_result.msg, true) | default('unknown error') }}
+            notify_level: error
+
+        - name: Fail rollback
+          ansible.builtin.fail:
+            msg: "Rollback of {{ app }} failed: {{ ansible_failed_result.msg | default('unknown error') }}"
