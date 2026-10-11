@@ -29,3 +29,5 @@
               '{{ ansible_failed_task.name | default('unknown') }}' failed:
               {{ ansible_failed_result.msg | default('unknown error') }}
             report_todo: "check the run log and re-run task ansible:truenas:update"
+          # a failed app query is already recorded by the role
+          when: ansible_failed_task.name | default('') != 'Fail on failed app query'
