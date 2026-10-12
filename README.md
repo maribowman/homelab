@@ -27,7 +27,7 @@ Nothing is updated by hand any more. A control LXC (`lxc-ansible`) runs the play
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Daily 01:00 | Native PVE backup of all guests to PBS (datastore on the Synology); PBS prunes, garbage-collects and verifies                         |
 | Daily 05:00 | `git pull`; redeploy the Docker stacks if the repo changed                                                                            |
-| Sun 04:00   | Snapshot → update every guest one at a time (PBS last) → health check → upgrade the PVE host (never rebooted automatically) → upgrade TrueNAS apps (non-major only; majors and TrueNAS OS updates become todos) → summary |
+| Sun 04:00   | Snapshot → update every guest one at a time (PBS last) → health check → upgrade the PVE host (never rebooted automatically) → prune unused TrueNAS app images → free-space check → upgrade TrueNAS apps (non-major only; majors and TrueNAS OS updates become todos; skipped when the apps pool is low on space) → prune again (keeps in-use + one rollback image) → summary |
 | Continuous  | Renovate PRs for image updates; patch/minor automerge when CI is green                                                                |
 
 ## Setup
@@ -83,6 +83,8 @@ Dependencies (venv, collections) are installed automatically on first use. Extra
 | `task ansible:truenas:update`              | Upgrade TrueNAS apps to their newest non-major version, summary             |
 | `task ansible:truenas:check`               | Dry-run of the above (shows the plans, upgrades nothing)                    |
 | `task ansible:truenas:rollback APP=<app>`  | Roll a TrueNAS app back (optional `VERSION=<v>`), with its snapshot         |
+| `task ansible:truenas:prune`               | Delete unused app images (keeps in-use + one rollback image), summary       |
+| `task ansible:truenas:prune-check`         | Dry-run of the above (lists what would be deleted and freed)                |
 | `task ansible:truenas:syntax`              | Syntax-check the TrueNAS playbooks                                          |
 | `task ansible:docker:deploy`                | Sync stacks, write `.env` files, pull pinned images, `up -d`, health check  |
 | `task ansible:docker:restart STACK=<stack>` | Restart a single stack                                                      |
