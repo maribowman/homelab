@@ -14,7 +14,7 @@ plan = tp.truenas_prune_plan
 REPO = "ghcr.io/immich-app/immich-server"
 
 
-def img(image_id, created, tags=(), repos=None, size=100, dangling=False):
+def img(image_id, created, tags=(), repos=None, size=100):
     if repos is None:
         repos = sorted({t.rsplit(":", 1)[0] for t in tags})
     return {
@@ -23,7 +23,6 @@ def img(image_id, created, tags=(), repos=None, size=100, dangling=False):
         "tags": list(tags),
         "created": created,
         "size": size,
-        "dangling": dangling,
     }
 
 
@@ -79,8 +78,8 @@ def test_dangling_with_digest_repo_is_rollback():
     repo = "ghcr.io/maribowman/roastbeef-swag"
     images = [
         img("cur", "2025-02-01T00:00:00.123456789Z", [f"{repo}:latest"], repos=[f"{repo}@sha256:bbb"]),
-        img("prev", "2025-01-01T00:00:00Z", [], repos=[f"{repo}@sha256:aaa"], dangling=True),
-        img("older", "2024-12-01T00:00:00Z", [], repos=[f"{repo}@sha256:999"], dangling=True),
+        img("prev", "2025-01-01T00:00:00Z", [], repos=[f"{repo}@sha256:aaa"]),
+        img("older", "2024-12-01T00:00:00Z", [], repos=[f"{repo}@sha256:999"]),
     ]
     result = plan(images, [f"{repo}:latest"], rollback_count=1)
     assert whys(result) == {"cur": "in_use", "prev": "rollback"}
@@ -90,8 +89,8 @@ def test_dangling_with_digest_repo_is_rollback():
 def test_in_use_by_digest_ref():
     repo = "ghcr.io/x/y"
     images = [
-        img("cur", "2025-02-01T00:00:00Z", [], repos=[f"{repo}@sha256:bbb"], dangling=True),
-        img("prev", "2025-01-01T00:00:00Z", [], repos=[f"{repo}@sha256:aaa"], dangling=True),
+        img("cur", "2025-02-01T00:00:00Z", [], repos=[f"{repo}@sha256:bbb"]),
+        img("prev", "2025-01-01T00:00:00Z", [], repos=[f"{repo}@sha256:aaa"]),
     ]
     result = plan(images, [f"{repo}@sha256:bbb"])
     assert whys(result) == {"cur": "in_use", "prev": "rollback"}
@@ -174,8 +173,8 @@ def test_bad_rollback_count_raises_type_error(count):
 
 def test_dangling_without_repo_deleted():
     images = [
-        img("orphan", "2025-01-01T00:00:00Z", [], repos=[], size=42, dangling=True),
-        img("none", "2025-01-01T00:00:00Z", ["<none>:<none>"], repos=["<none>@<none>"], size=8, dangling=True),
+        img("orphan", "2025-01-01T00:00:00Z", [], repos=[], size=42),
+        img("none", "2025-01-01T00:00:00Z", ["<none>:<none>"], repos=["<none>@<none>"], size=8),
     ]
     result = plan(images, [])
     assert reasons(result) == {"orphan": "dangling", "none": "dangling"}
@@ -287,7 +286,7 @@ def test_freed_bytes_sum_and_sorting():
         img("a_old1", "2024-01-01T00:00:00Z", ["a:0"], size=300),
         img("a_rb", "2025-02-01T00:00:00Z", ["a:2"], size=1),
         img("b_new", "2025-01-01T00:00:00Z", ["b:1"], size=1),
-        img("dang", "2023-01-01T00:00:00Z", [], repos=[], size=4, dangling=True),
+        img("dang", "2023-01-01T00:00:00Z", [], repos=[], size=4),
     ]
     result = plan(images, ["a:3"], rollback_count=1)
     assert ids(result["delete"]) == ["dang", "a_old1", "a_old2", "b_old"]
@@ -324,5 +323,68 @@ def test_bad_input_raises_type_error(images, in_use, keep):
         plan(images, in_use, keep)
 
 
+def test_stopped_app_sharing_repo_with_running_app_keeps_all():
+    # app A runs postgres:17, app B is stopped on postgres:15 (no containers, so force=false would not save it)
+    images = [
+        img("pg17", "2025-03-01T00:00:00Z", ["postgres:17"]),
+        img("pg16", "2025-02-01T00:00:00Z", ["postgres:16"]),
+        img("pg15", "2025-01-01T00:00:00Z", ["postgres:15"]),
+        img("pg14", "2024-12-01T00:00:00Z", ["postgres:14"]),
+        img("pg18", "2025-04-01T00:00:00Z", ["postgres:18"]),
+    ]
+    result = plan(images, ["postgres:17"], rollback_count=1, stopped=["docker.io/library/postgres:15"])
+    assert result["delete"] == []
+    assert whys(result) == {"pg17": "in_use", "pg16": "stopped_app", "pg15": "stopped_app",
+                            "pg14": "stopped_app", "pg18": "stopped_app"}
+    assert result["unused_repos"] == []
+
+
+def test_stopped_app_repo_not_listed_as_unused():
+    images = [
+        img("a", "2025-01-01T00:00:00Z", [], repos=[f"{REPO}@sha256:aaa"]),
+        img("b", "2025-02-01T00:00:00Z", [], repos=[f"{REPO}@sha256:bbb"]),
+        img("c", "2025-03-01T00:00:00Z", [], repos=[f"{REPO}@sha256:ccc"]),
+    ]
+    result = plan(images, [], rollback_count=1, stopped=[f"{REPO}:v1.2"])
+    assert result["delete"] == []
+    assert set(whys(result).values()) == {"stopped_app"}
+    assert result["unused_repos"] == []
+
+
+def test_stopped_other_repo_does_not_protect():
+    images = [
+        img("cur", "2025-02-01T00:00:00Z", [f"{REPO}:v2"]),
+        img("old", "2025-01-01T00:00:00Z", [f"{REPO}:v1"]),
+    ]
+    result = plan(images, [f"{REPO}:v2"], rollback_count=0, stopped=["redis:7"])
+    assert reasons(result) == {"old": "older"}
+
+
+@pytest.mark.parametrize("stopped", ["postgres:15", [1]])
+def test_bad_stopped_raises_type_error(stopped):
+    with pytest.raises(TypeError):
+        plan([], [], [], 2, stopped)
+
+
+def test_config_images_custom_app_compose():
+    config = {"services": {"web": {"image": "ghcr.io/x/web:1.0@sha256:abc", "environment": {"IMAGE": "no"}},
+                           "db": {"image": "postgres:15"}, "empty": {"image": ""}}}
+    assert tp.truenas_config_images(config) == ["ghcr.io/x/web:1.0@sha256:abc", "postgres:15"]
+
+
+def test_config_images_catalog_images_values():
+    config = {"images": {"image": {"repository": "ghcr.io/immich-app/immich-server", "tag": "v1.2"},
+                         "pg_image": {"repository": "pgvector/pgvector", "tag": ""}},
+              "storage": [{"type": "host_path", "repository": None}]}
+    assert tp.truenas_config_images(config) == ["ghcr.io/immich-app/immich-server:v1.2", "pgvector/pgvector"]
+
+
+@pytest.mark.parametrize("config", [None, {}, [], "x", {"a": [{"b": 1}]}])
+def test_config_images_none_found(config):
+    assert tp.truenas_config_images(config) == []
+
+
 def test_filter_module_exports():
-    assert tp.FilterModule().filters()["truenas_prune_plan"] is plan
+    filters = tp.FilterModule().filters()
+    assert filters["truenas_prune_plan"] is plan
+    assert filters["truenas_config_images"] is tp.truenas_config_images
