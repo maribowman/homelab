@@ -1,6 +1,8 @@
 ---
 # Prune unused app images (tasks/main.yaml); false skips the prune (the guard is skipped by the caller)
 prune_truenas_images_enabled: true
+# Record the "pruned N images, freed X GB" line; the update run turns it off (warnings and the guard still report)
+prune_truenas_images_report_ok: true
 # Regexes matched against an image repository (e.g. "^ghcr.io/immich-app/"); matching repositories keep every image
 prune_truenas_images_keep: []
 # Per repository, older images kept for a rollback next to the ones in use; a repository with nothing running

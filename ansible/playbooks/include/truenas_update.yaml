@@ -21,6 +21,10 @@
         - name: Prune app images
           ansible.builtin.include_role:
             name: prune_truenas_images
+          vars:
+            # the prune only shows up in the summary with a warning (unused repositories, failed deletes)
+            # or when the guard finds too little space
+            prune_truenas_images_report_ok: false
           when: prune_truenas_images_enabled | default(true) | bool
 
         - name: Check free space on the apps pool

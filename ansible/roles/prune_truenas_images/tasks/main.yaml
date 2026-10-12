@@ -13,7 +13,8 @@
 # - Check mode deletes nothing: it lists the images it would delete and the bytes that would be freed.
 # - Never fails the play: a failed query records an error and ends the role; failed deletes are warnings.
 # - Records one line (pruned N images, freed X GB, free space of the pool) plus warnings for unused repositories
-#   and failed deletes.
+#   and failed deletes. prune_truenas_images_report_ok: false (the update run) leaves out the line and its
+#   free-space measurement.
 #
 # Output: prune_truenas_images_results = the truenas_prune_plan result plus failed: [{id, label, error}].
 #
@@ -182,8 +183,10 @@
         # a failed measurement leaves the free space out of the report
         - name: Measure free space for the report
           ansible.builtin.include_tasks: measure.yaml
+          when: prune_truenas_images_report_ok | bool
 
         - name: Report pruned images
+          when: prune_truenas_images_report_ok | bool
           ansible.builtin.include_role:
             name: run_report
             tasks_from: record
