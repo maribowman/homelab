@@ -187,9 +187,8 @@
               - "{{ prune_truenas_images_docker_path }}"
           register: prune_truenas_images_report_df
           changed_when: false
-          failed_when: false # the free space is left out of the report
+          failed_when: false # falls back to the guard's measurement, else the free space is left out
           check_mode: false
-          when: prune_truenas_images_free | default({}, true) | length == 0
 
         - name: Parse free space for the report
           vars:
@@ -198,16 +197,14 @@
                  if prune_truenas_images_report_df.rc | default(1) == 0 else [] }}
           ansible.builtin.set_fact:
             prune_truenas_images_report_free: >-
-              {{ prune_truenas_images_free
-                 if prune_truenas_images_free | default({}, true) | length > 0
-                 else {'avail_bytes': prune_truenas_images_report_fields[0] | int,
-                       'size_bytes': prune_truenas_images_report_fields[1] | int,
-                       'pct': (prune_truenas_images_report_fields[0] | int * 100
-                               / [prune_truenas_images_report_fields[1] | int, 1] | max) | round(1)}
+              {{ {'avail_bytes': prune_truenas_images_report_fields[0] | int,
+                  'size_bytes': prune_truenas_images_report_fields[1] | int,
+                  'pct': (prune_truenas_images_report_fields[0] | int * 100
+                          / [prune_truenas_images_report_fields[1] | int, 1] | max) | round(1)}
                  if prune_truenas_images_report_fields | length == 2
                     and prune_truenas_images_report_fields | select('match', '^[0-9]+$') | list | length == 2
                     and prune_truenas_images_report_fields[1] | int > 0
-                 else {} }}
+                 else prune_truenas_images_free | default({}, true) }}
 
         - name: Report pruned images
           ansible.builtin.include_role:
