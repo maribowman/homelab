@@ -31,12 +31,34 @@ tasks:
       --vault-password-file "{{.VAULT_PWD_FILE}}" \
       --extra-vars "app={{.APP}}" {{if .VERSION}}--extra-vars "version={{.VERSION}}"{{end}} {{.CLI_ARGS}}
 
+  prune:
+    desc: "Prune unused TrueNAS app images (keeps in-use + 2 rollback images per repository)"
+    silent: true
+    deps: [":init"]
+    vars:
+      PRUNE_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_prune.yaml"}}'
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PRUNE_PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" {{.CLI_ARGS}}
+
+  prune-check:
+    desc: "Dry-run the TrueNAS image prune (--check --diff, lists what would be deleted)"
+    silent: true
+    deps: [":init"]
+    vars:
+      PRUNE_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_prune.yaml"}}'
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PRUNE_PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" --check --diff {{.CLI_ARGS}}
+
   syntax:
     desc: "Check TrueNAS playbooks"
     silent: true
     deps: [":init"]
     vars:
       ROLLBACK_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_rollback.yaml"}}'
+      PRUNE_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_prune.yaml"}}'
     cmds:
       - '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
       - '"{{.VENV}}/bin/ansible-playbook" "{{.ROLLBACK_PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
+      - '"{{.VENV}}/bin/ansible-playbook" "{{.PRUNE_PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'

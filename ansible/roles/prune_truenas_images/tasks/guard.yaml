@@ -1,0 +1,73 @@
+---
+# Free-space guard for the apps pool: run before upgrades so an image pull can't run the pool full and leave a
+# half-pulled layer behind. Measures in check mode too.
+#
+# Sets the host facts prune_truenas_images_space_ok (bool) and prune_truenas_images_free
+# ({avail_bytes, size_bytes, pct}) and records an error when the free space is below
+# prune_truenas_images_min_free_gb or prune_truenas_images_min_free_pct, or when it can't be measured.
+
+- name: Measure free space on the apps pool
+  ansible.builtin.command:
+    argv:
+      - df
+      - -B1
+      - --output=avail,size
+      - "{{ prune_truenas_images_docker_path }}"
+  register: prune_truenas_images_guard_df
+  changed_when: false
+  failed_when: false # recorded below
+  check_mode: false
+
+- name: Parse free space
+  vars:
+    prune_truenas_images_guard_fields: >-
+      {{ (prune_truenas_images_guard_df.stdout_lines | default([]) | last | default('')).split()
+         if prune_truenas_images_guard_df.rc | default(1) == 0 else [] }}
+    prune_truenas_images_guard_valid: >-
+      {{ prune_truenas_images_guard_fields | length == 2
+         and prune_truenas_images_guard_fields | select('match', '^[0-9]+$') | list | length == 2
+         and prune_truenas_images_guard_fields[1] | int > 0 }}
+  ansible.builtin.set_fact:
+    prune_truenas_images_free: >-
+      {{ {'avail_bytes': prune_truenas_images_guard_fields[0] | int,
+          'size_bytes': prune_truenas_images_guard_fields[1] | int,
+          'pct': (prune_truenas_images_guard_fields[0] | int * 100
+                  / [prune_truenas_images_guard_fields[1] | int, 1] | max) | round(1)}
+         if prune_truenas_images_guard_valid else {} }}
+
+- name: Evaluate free space
+  ansible.builtin.set_fact:
+    prune_truenas_images_space_ok: >-
+      {{ prune_truenas_images_free | length > 0
+         and prune_truenas_images_free.avail_bytes >= prune_truenas_images_min_free_gb | float * 1000000000
+         and prune_truenas_images_free.pct >= prune_truenas_images_min_free_pct | float }}
+
+- name: Report failed free-space check
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    prune_truenas_images_guard_error: >-
+      {{ (prune_truenas_images_guard_df.stderr_lines | default([]) | select | last)
+         | default(prune_truenas_images_guard_df.msg | default('unexpected df output'), true) | truncate(200) }}
+    report_level: error
+    report_text: >-
+      could not measure free space on {{ prune_truenas_images_docker_path }}:
+      {{ prune_truenas_images_guard_error }}; no apps were upgraded
+    report_todo: >-
+      check that 'df {{ prune_truenas_images_docker_path }}' works for the ansible user,
+      then task ansible:truenas:update
+  when: prune_truenas_images_free | length == 0
+
+- name: Report low free space
+  ansible.builtin.include_role:
+    name: run_report
+    tasks_from: record
+  vars:
+    report_level: error
+    report_text: >-
+      apps pool low on free space: {{ '%.1f' | format(prune_truenas_images_free.avail_bytes / 1000000000) }} GB
+      ({{ prune_truenas_images_free.pct | round | int }} %) free, need {{ prune_truenas_images_min_free_gb }} GB
+      and {{ prune_truenas_images_min_free_pct }} %; no apps were upgraded
+    report_todo: "free space on the apps pool, then task ansible:truenas:update"
+  when: prune_truenas_images_free | length > 0 and not prune_truenas_images_space_ok
