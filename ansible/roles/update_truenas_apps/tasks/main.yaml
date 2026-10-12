@@ -107,34 +107,43 @@
   ansible.builtin.set_fact:
     update_truenas_apps_summary: >-
       {%- set parts = [] -%}
+      {%- macro apps(n, kind='') -%}{{ n }} {{ kind }}app{{ '' if n == 1 else 's' }}{%- endmacro -%}
       {%- if update_truenas_apps_upgraded -%}
         {%- set items = [] -%}
         {%- for r in update_truenas_apps_upgraded -%}
-          {%- set _ = items.append(r.name ~ ' ' ~ r.current_human_version ~ '→' ~ r.target_human_version) -%}
+          {%- set _ = items.append(r.name ~ ' ' ~ r.current_human_version ~ ' → ' ~ r.target_human_version) -%}
         {%- endfor -%}
-        {%- set _ = parts.append(('would upgrade ' if ansible_check_mode else 'upgraded ') ~ (items | join(', '))) -%}
+        {%- set _ = parts.append({'text': ('would upgrade ' if ansible_check_mode else 'upgraded ')
+                                          ~ apps(items | length), 'items': items}) -%}
       {%- endif -%}
       {%- if update_truenas_apps_pulled -%}
-        {%- set _ = parts.append(('would pull images for ' if ansible_check_mode else 'pulled images for ')
-                                 ~ (update_truenas_apps_pulled | join(', '))) -%}
+        {%- set _ = parts.append({'text': ('would pull images for ' if ansible_check_mode else 'pulled images for ')
+                                          ~ apps(update_truenas_apps_pulled | length, 'custom '),
+                                  'items': update_truenas_apps_pulled}) -%}
       {%- endif -%}
       {%- if not parts -%}
         {%- set current = update_truenas_apps_apps | map(attribute='name')
                           | reject('in', update_truenas_apps_not_current) | list | length -%}
-        {%- set _ = parts.append(current ~ ' apps up to date' if update_truenas_apps_apps else 'no apps installed') -%}
+        {%- set _ = parts.append({'text': current ~ ' apps up to date' if update_truenas_apps_apps else 'no apps installed',
+                                  'items': []}) -%}
       {%- endif -%}
       {%- if update_truenas_apps_excluded -%}
-        {%- set _ = parts.append('excluded with update: ' ~ (update_truenas_apps_excluded | join(', '))) -%}
+        {%- set _ = parts.append({'text': 'excluded with update', 'items': update_truenas_apps_excluded}) -%}
       {%- endif -%}
-      {{ parts | join('; ') }}
+      {{ parts }}
 
+# one entry per part; the apps are sub-bullets in the summary
 - name: Report app updates
   ansible.builtin.include_role:
     name: run_report
     tasks_from: record
   vars:
     report_level: ok
-    report_text: "{{ update_truenas_apps_summary }}"
+    report_text: "{{ item.text }}"
+    report_items: "{{ item['items'] }}"
+  loop: "{{ update_truenas_apps_summary }}"
+  loop_control:
+    label: "{{ item.text }}"
 
 - name: Report held-back apps
   ansible.builtin.include_role:
