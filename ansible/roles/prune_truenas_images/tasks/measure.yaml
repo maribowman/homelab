@@ -1,0 +1,71 @@
+---
+# Free space for the guard (tasks/guard.yaml) and the prune report (tasks/main.yaml). Measures in check mode too.
+#
+# Sets the host fact prune_truenas_images_free = {avail_bytes, size_bytes, pct, pool}, or {} plus
+# prune_truenas_images_measure_error when it can't be measured:
+#   avail_bytes  what prune_truenas_images_docker_path can still write (df; a ZFS dataset's avail is the pool's)
+#   size_bytes   usable size of its pool (zfs list avail + used of the pool's root dataset)
+#   pct          avail_bytes of the pool in % of size_bytes. df's size of a dataset is its own usage plus the
+#                pool's avail, so it would not show the pool filling up through other datasets.
+
+- name: Measure free space on the docker dataset
+  ansible.builtin.command:
+    argv:
+      - df
+      - -B1
+      - --output=source,avail
+      - "{{ prune_truenas_images_docker_path }}"
+  register: prune_truenas_images_measure_df
+  changed_when: false
+  failed_when: false # recorded below
+  check_mode: false
+
+- name: Parse the docker dataset
+  ansible.builtin.set_fact:
+    prune_truenas_images_measure_fields: >-
+      {{ (prune_truenas_images_measure_df.stdout_lines | default([]) | last | default('')).split()
+         if prune_truenas_images_measure_df.rc | default(1) == 0 else [] }}
+
+- name: Measure the pool
+  ansible.builtin.command:
+    argv:
+      - "{{ prune_truenas_images_zfs }}"
+      - list
+      - -Hp
+      - -o
+      - avail,used
+      # the pool's root dataset: avail is the pool's usable free space, used everything stored in it
+      - "{{ prune_truenas_images_measure_fields[0].split('/')[0] }}"
+  register: prune_truenas_images_measure_zfs
+  changed_when: false
+  failed_when: false # recorded below
+  check_mode: false
+  when:
+    - prune_truenas_images_measure_fields | length == 2
+    - prune_truenas_images_measure_fields[1] is match('^[0-9]+$')
+
+- name: Parse free space
+  vars:
+    prune_truenas_images_measure_pool: >-
+      {{ (prune_truenas_images_measure_zfs.stdout | default('')).split()
+         if prune_truenas_images_measure_zfs.rc | default(1) == 0 else [] }}
+    prune_truenas_images_measure_valid: >-
+      {{ prune_truenas_images_measure_pool | length == 2
+         and prune_truenas_images_measure_pool | select('match', '^[0-9]+$') | list | length == 2
+         and (prune_truenas_images_measure_pool | map('int') | sum) > 0 }}
+    prune_truenas_images_measure_size: "{{ prune_truenas_images_measure_pool | map('int') | sum }}"
+  ansible.builtin.set_fact:
+    prune_truenas_images_free: >-
+      {{ {'avail_bytes': prune_truenas_images_measure_fields[1] | int,
+          'size_bytes': prune_truenas_images_measure_size | int,
+          'pct': (prune_truenas_images_measure_pool[0] | int * 100
+                  / [prune_truenas_images_measure_size | int, 1] | max) | round(1),
+          'pool': prune_truenas_images_measure_fields[0].split('/')[0]}
+         if prune_truenas_images_measure_valid else {} }}
+    prune_truenas_images_measure_error: >-
+      {%- set r = prune_truenas_images_measure_zfs
+                  if prune_truenas_images_measure_zfs.rc is defined else prune_truenas_images_measure_df -%}
+      {{ '' if prune_truenas_images_measure_valid
+         else ((r.stderr_lines | default([]) | select | last)
+               | default(r.msg | default('unexpected ' ~ (r.cmd | default(['df']) | first) ~ ' output'), true)
+               | truncate(200)) }}
