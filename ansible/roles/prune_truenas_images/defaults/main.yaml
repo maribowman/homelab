@@ -7,8 +7,8 @@ prune_truenas_images_keep: []
 # (stopped app, upgrade that left the app down) keeps this many of its newest images
 prune_truenas_images_rollback_count: 2
 # false: add this pass's counts to the host fact prune_truenas_images_totals and record nothing;
-# true: record the totals plus this pass and reset the fact (warnings for unused repositories and
-# stopped apps come from this last pass only)
+# true: record the totals plus this pass and reset the fact (the unused-repository warning comes from
+# this last pass only)
 prune_truenas_images_report: true
 # Path on the apps pool whose free space the guard (tasks/guard.yaml) checks
 prune_truenas_images_docker_path: /mnt/.ix-apps/docker
