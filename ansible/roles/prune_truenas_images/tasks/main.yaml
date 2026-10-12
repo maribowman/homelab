@@ -213,11 +213,12 @@
             prune_truenas_images_count: "{{ prune_truenas_images_totals.deleted | length }}"
             prune_truenas_images_freed: >-
               {{ '%.1f GB' | format((prune_truenas_images_totals.deleted | map(attribute='size') | sum) / 1000000000) }}
+            prune_truenas_images_noun: "{{ ' image' if prune_truenas_images_count | int == 1 else ' images' }}"
             report_level: ok
             report_text: >-
-              {{ ('would prune ' ~ prune_truenas_images_count ~ ' images, would free ' ~ prune_truenas_images_freed
+              {{ ('would prune ' ~ prune_truenas_images_count ~ prune_truenas_images_noun ~ ', would free ' ~ prune_truenas_images_freed
                   if ansible_check_mode
-                  else 'pruned ' ~ prune_truenas_images_count ~ ' images, freed ' ~ prune_truenas_images_freed)
+                  else 'pruned ' ~ prune_truenas_images_count ~ prune_truenas_images_noun ~ ', freed ' ~ prune_truenas_images_freed)
                  if prune_truenas_images_count | int > 0 else 'no unused images' }}{{
                  (' (free ' ~ '%.1f GB' | format(prune_truenas_images_report_free.avail_bytes / 1000000000)
                   ~ ' / ' ~ prune_truenas_images_report_free.pct | round | int ~ ' %)')
