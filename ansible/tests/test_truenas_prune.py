@@ -97,6 +97,38 @@ def test_in_use_by_digest_ref():
     assert whys(result) == {"cur": "in_use", "prev": "rollback"}
 
 
+def test_truenas_25_10_digest_pinned_refs():
+    # Shape seen on TrueNAS 25.10: apps run repo:tag@sha256:... and most images have no repo_tags,
+    # only repo_digests (passed whole as repos); one image can carry two digests of the same repo.
+    pg = "ixsystems/postgres-upgrade"
+    images = [
+        img("server-cur", "2026-10-07T18:40:14.15638162Z", [], repos=[f"{REPO}@sha256:be56"]),
+        img("server-prev", "2026-09-28T16:55:59.233195878Z", [], repos=[f"{REPO}@sha256:d317"]),
+        img("pg-cur", "2026-10-03T17:10:51Z", [], repos=[f"{pg}@sha256:7215", f"{pg}@sha256:81e6"]),
+        img("pg-prev", "2026-09-30T17:20:20Z", [], repos=[f"{pg}@sha256:336c", f"{pg}@sha256:e28b"]),
+        img("pg-old", "2026-09-15T19:54:43Z", [], repos=[f"{pg}@sha256:8a90"]),
+        img("rustfs-cur", "2026-10-03T05:01:08Z", [], repos=["rustfs/rustfs@sha256:1803"]),
+        img("rustfs-prev", "2026-09-16T10:05:51Z", ["rustfs/rustfs:1.0.0"], repos=["rustfs/rustfs@sha256:8cc9"]),
+        img("pg18", "2026-09-19T00:36:15Z", [], repos=["postgres@sha256:5a5a"]),
+    ]
+    in_use = [
+        f"{REPO}:v3.3.0@sha256:be56",
+        f"{pg}:1.2.21@sha256:81e6",
+        f"{pg}:1.2.21@sha256:7215",
+        "rustfs/rustfs:1.0.1@sha256:1803",
+        "postgres:18.6-trixie@sha256:5a5a",
+    ]
+    result = plan(images, in_use)
+    assert whys(result) == {
+        "server-cur": "in_use", "server-prev": "rollback",
+        "pg-cur": "in_use", "pg-prev": "rollback",
+        "rustfs-cur": "in_use", "rustfs-prev": "rollback",
+        "pg18": "in_use",
+    }
+    assert reasons(result) == {"pg-old": "older"}
+    assert result["unused_repos"] == []
+
+
 def test_dangling_without_repo_deleted():
     images = [
         img("orphan", "2025-01-01T00:00:00Z", [], repos=[], size=42, dangling=True),

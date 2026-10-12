@@ -7,7 +7,7 @@ prune_truenas_images_keep: []
 # true: record the totals plus this pass and reset the fact
 prune_truenas_images_report: true
 # Path on the apps pool whose free space the guard (tasks/guard.yaml) checks
-prune_truenas_images_docker_path: /mnt/.ix-apps
+prune_truenas_images_docker_path: /mnt/.ix-apps/docker
 # The guard fails (no upgrades or pulls) below either threshold
 prune_truenas_images_min_free_gb: 20
 prune_truenas_images_min_free_pct: 10

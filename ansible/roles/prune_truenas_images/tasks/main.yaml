@@ -50,11 +50,10 @@
               {%- set out = [] -%}
               {%- for i in prune_truenas_images_image_query.stdout | from_json -%}
                 {%- set parsed = i.parsed_repo_tags | default([], true) -%}
-                {%- set repos = parsed | map(attribute='image', default='') | select | unique | list -%}
-                {%- if not repos -%}
-                  {%- set repos = i.repo_digests | default([], true) | map('regex_replace', '@.*$', '')
-                                  | select | unique | list -%}
-                {%- endif -%}
+                {#- digest refs (repo@sha256:...) stay whole: apps reference images as repo:tag@sha256:...
+                    and most images have no repo_tags, so in-use matching works by digest -#}
+                {%- set repos = (parsed | map(attribute='image', default='') | list
+                                 + i.repo_digests | default([], true)) | select | unique | list -%}
                 {%- set created = i.created -%}
                 {%- if created is mapping -%}
                   {%- set created = '%Y-%m-%dT%H:%M:%SZ' | ansible.builtin.strftime((created['$date'] | int) / 1000, true) -%}
