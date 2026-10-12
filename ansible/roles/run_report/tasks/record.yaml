@@ -7,6 +7,7 @@
 #     vars:
 #       report_level: ok                     # ok | warn | error
 #       report_text: "12 packages, rebooted"
+#       report_items: []                     # optional, shown as sub-bullets of the text (e.g. upgraded apps)
 #       report_todo: ""                      # manual action, "" = none
 #
 # Entries are appended to the host fact `run_report_entries` and sent once per run
@@ -25,6 +26,7 @@
     run_report_entries: >-
       {{ hostvars[report_host | default(inventory_hostname)].run_report_entries | default([])
          + [{'level': report_level, 'text': report_text | default('') | string | trim,
+             'items': report_items | default([]) | map('string') | map('trim') | select | list,
              'todo': report_todo | default('') | string | trim}] }}
   delegate_to: "{{ report_host | default(inventory_hostname) }}"
   delegate_facts: true

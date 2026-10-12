@@ -32,7 +32,7 @@
           {%- set _ = rows.append({
                 'host': h,
                 'level': 'error' if 'error' in levels else ('warn' if 'warn' in levels else 'ok'),
-                'texts': entries | map(attribute='text') | select | list,
+                'entries': entries | selectattr('text') | list,
                 'todos': entries | map(attribute='todo') | select | list}) -%}
         {%- endif -%}
       {%- endfor -%}
@@ -42,18 +42,33 @@
   tags: [always]
   vars:
     run_report_levels_seen: "{{ run_report_rows | map(attribute='level') | list }}"
+    # Discord markdown: entry texts are escaped (versions like v3.3.0_1.14.47 contain underscores)
     run_report_todo_lines: >-
       {%- set lines = [] -%}
       {%- for row in run_report_rows -%}
         {%- for todo in row.todos -%}
-          {%- set _ = lines.append('• ' ~ row.host ~ ': ' ~ todo) -%}
+          {%- set _ = lines.append('- **' ~ row.host ~ '**: ' ~ (todo | regex_replace('([\\*_~`|])', '\\\\\\1'))) -%}
         {%- endfor -%}
       {%- endfor -%}
       {{ lines }}
+    # A list item per host: its one entry on the same line, or one sub-item per entry when it has several;
+    # an entry's report_items are nested one level below the entry
     run_report_host_lines: >-
       {%- set lines = [] -%}
       {%- for row in run_report_rows -%}
-        {%- set _ = lines.append(row.host ~ ((' — ' ~ (row.texts | join('; '))) if row.texts else '')) -%}
+        {%- set single = row.entries | length == 1 -%}
+        {%- set indent = '  ' if single else '    ' -%}
+        {%- set head = '- **' ~ row.host ~ '**' -%}
+        {%- if not single -%}
+          {%- set _ = lines.append(head) -%}
+        {%- endif -%}
+        {%- for e in row.entries -%}
+          {%- set text = e.text | regex_replace('([\\*_~`|])', '\\\\\\1') -%}
+          {%- set _ = lines.append((head ~ ': ' ~ text) if single else ('  - ' ~ text)) -%}
+          {%- for item in e.get('items') or [] -%}
+            {%- set _ = lines.append(indent ~ '- ' ~ (item | regex_replace('([\\*_~`|])', '\\\\\\1'))) -%}
+          {%- endfor -%}
+        {%- endfor -%}
       {%- endfor -%}
       {{ lines }}
     run_report_todo_block: "{{ ('\n\n**Todo**\n' ~ (run_report_todo_lines | join('\n'))) if run_report_todo_lines else '' }}"

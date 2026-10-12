@@ -89,10 +89,19 @@
         name: run_report
         tasks_from: record
       vars:
+        # pull: the stacks whose containers compose created or recreated (new image or config); shown as sub-bullets
+        deploy_docker_stacks_updated: >-
+          {{ deploy_docker_stacks_compose.results | default([]) | selectattr('changed', 'defined') | selectattr('changed')
+             | map(attribute='item') | map('basename') | list }}
         report_level: ok
         report_text: >-
-          {{ {'pull': 'deployed', 'restart': 'restarted'}[docker_state] }}
-          {{ deploy_docker_stacks_dirs | map('basename') | join(', ') }}
+          {{ 'restarted:' if docker_state == 'restart'
+             else ('deployed ' ~ deploy_docker_stacks_dirs | length ~ ' stacks, '
+                   ~ (('updated:' if deploy_docker_stacks_updated else 'none changed')
+                      if not ansible_check_mode else 'changes unknown in check mode')) }}
+        report_items: >-
+          {{ deploy_docker_stacks_dirs | map('basename') | list if docker_state == 'restart'
+             else (deploy_docker_stacks_updated if not ansible_check_mode else []) }}
       # up/down/health are steps of the proxmox update, which reports the guest as a whole
       when: docker_state in ['pull', 'restart']
 

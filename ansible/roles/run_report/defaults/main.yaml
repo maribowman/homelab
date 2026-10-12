@@ -2,6 +2,7 @@
 # Public interface: record (see tasks/record.yaml)
 #   report_level: ok | warn | error
 #   report_text:  short result text, shown on the host's line
+#   report_items: optional list, shown as sub-bullets of report_text (e.g. upgraded apps)
 #   report_todo:  manual action ("" = none), listed in the Todo section
 #   report_host:  host the entry belongs to (default: inventory_hostname)
 
