@@ -1,11 +1,10 @@
 ---
 # TrueNAS app updates (imported by truenas.yaml and maintenance.yaml, followed by
-# include/run_summary.yaml): prune unused app images (silent) -> free-space guard ->
-# every non-major catalog app upgrade, image pulls for custom apps, majors and OS updates
-# recorded as todos (only when the guard passed) -> prune again, which reports both passes.
-# The second prune runs in always:, so it reports even when the upgrades failed.
+# include/run_summary.yaml): prune unused app images -> free-space guard -> every non-major
+# catalog app upgrade, image pulls for custom apps, majors and OS updates recorded as todos
+# (only when the guard passed). Images the upgrades make obsolete are pruned by next week's run.
 # See roles/prune_truenas_images and roles/update_truenas_apps.
-# prune_truenas_images_enabled: false skips both prunes and the guard.
+# prune_truenas_images_enabled: false skips the prune and the guard.
 #
 # Independent of the Proxmox part: TrueNAS is not in guests, so a failed guest update
 # does not skip it. Nothing is sent from here; results are recorded with run_report.
@@ -18,12 +17,10 @@
   tasks:
     - name: Update TrueNAS apps
       block:
-        # frees space for the pulls that follow; counts are kept for the second prune
-        - name: Prune app images before the upgrades
+        # frees space for the pulls that follow
+        - name: Prune app images
           ansible.builtin.include_role:
             name: prune_truenas_images
-          vars:
-            prune_truenas_images_report: false
           when: prune_truenas_images_enabled | default(true) | bool
 
         - name: Check free space on the apps pool
@@ -50,11 +47,3 @@
             report_todo: "check the run log and re-run task ansible:truenas:update"
           # a failed app query is already recorded by the role
           when: ansible_failed_task.name | default('') != 'Fail on failed app query'
-      always:
-        # deletes the images the upgrades made obsolete and reports both passes; never fails
-        - name: Prune app images after the upgrades
-          ansible.builtin.include_role:
-            name: prune_truenas_images
-          vars:
-            prune_truenas_images_report: true
-          when: prune_truenas_images_enabled | default(true) | bool
