@@ -3,6 +3,9 @@
 prune_truenas_images_enabled: true
 # Regexes matched against an image repository (e.g. "^ghcr.io/immich-app/"); matching repositories keep every image
 prune_truenas_images_keep: []
+# Per repository, older images kept for a rollback next to the ones in use; a repository with nothing running
+# (stopped app, upgrade that left the app down) keeps this many of its newest images
+prune_truenas_images_rollback_count: 2
 # false: add this pass's counts to the host fact prune_truenas_images_totals and record nothing;
 # true: record the totals plus this pass and reset the fact
 prune_truenas_images_report: true

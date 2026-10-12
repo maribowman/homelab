@@ -20,15 +20,18 @@ its digest refs (repository + digest). Images are grouped by repository; an imag
 several repositories takes part in each. Per repository:
 
   1. in use                                          keep, why ``in_use``
-  2. the newest not-in-use image whose ``created`` is
-     strictly older than the newest in-use image      keep, why ``rollback``
-  3. no image of the repository in use               keep the newest, why ``newest``; the
-                                                     repository is listed in ``unused_repos``
+  2. the ``rollback_count`` (default 2) newest
+     not-in-use images whose ``created`` is strictly
+     older than the newest in-use image               keep, why ``rollback``
+  3. no image of the repository in use (stopped
+     app, upgrade that left the app down)             keep the ``rollback_count`` newest, why
+                                                     ``newest``; the repository is listed in
+                                                     ``unused_repos``
   4. repository matches a keep pattern               keep all, why ``pinned`` (not in unused_repos)
   5. everything else                                 delete, with reason
-       ``older``         older than the rollback image (repository in use)
+       ``older``         older than the rollback images (repository in use)
        ``newer_unused``  not in use, created at or after the newest in-use image (failed upgrade)
-       ``superseded``    not the newest image of a repository that is not in use
+       ``superseded``    older than the newest images of a repository that is not in use
        ``dangling``      no repository at all
 
 Keep wins across repositories: an image kept in any of its repositories is never deleted. Each
@@ -161,24 +164,24 @@ def _normalize_image(image):
     }
 
 
-def _decide_repo(members, in_use_ids):
+def _decide_repo(members, in_use_ids, rollback_count):
     """{id: ("keep", why) | ("delete", reason)} for the images of one repository."""
     by_age = sorted(members, key=lambda m: (m["created"], m["id"]))
     used = [m for m in by_age if m["id"] in in_use_ids]
     decisions = {}
     if not used:
-        newest = by_age[-1]
+        newest = {m["id"] for m in by_age[-rollback_count:]} if rollback_count else set()
         for m in by_age:
-            decisions[m["id"]] = ("keep", "newest") if m is newest else ("delete", "superseded")
+            decisions[m["id"]] = ("keep", "newest") if m["id"] in newest else ("delete", "superseded")
         return decisions, True
 
     newest_used = used[-1]["created"]
     older = [m for m in by_age if m["id"] not in in_use_ids and m["created"] < newest_used]
-    rollback = older[-1] if older else None
+    rollback = {m["id"] for m in older[-rollback_count:]} if rollback_count else set()
     for m in by_age:
         if m["id"] in in_use_ids:
             decisions[m["id"]] = ("keep", "in_use")
-        elif m is rollback:
+        elif m["id"] in rollback:
             decisions[m["id"]] = ("keep", "rollback")
         elif m["created"] < newest_used:
             decisions[m["id"]] = ("delete", "older")
@@ -187,7 +190,9 @@ def _decide_repo(members, in_use_ids):
     return decisions, False
 
 
-def truenas_prune_plan(images, in_use, keep_patterns=None):
+def truenas_prune_plan(images, in_use, keep_patterns=None, rollback_count=2):
+    if isinstance(rollback_count, bool) or not isinstance(rollback_count, int) or rollback_count < 0:
+        raise TypeError("truenas_prune_plan: rollback_count must be an int >= 0")
     if not isinstance(images, list):
         raise TypeError(f"truenas_prune_plan: images must be a list, got {type(images).__name__}")
     if in_use is None:
@@ -225,7 +230,7 @@ def truenas_prune_plan(images, in_use, keep_patterns=None):
             for m in members:
                 decisions[m["id"]].append((repo, "keep", "pinned"))
             continue
-        repo_decisions, unused = _decide_repo(members, in_use_ids)
+        repo_decisions, unused = _decide_repo(members, in_use_ids, rollback_count)
         if unused:
             unused_repos.add(repo)
         for image_id, (kind, label) in repo_decisions.items():

@@ -2,8 +2,9 @@
 # Prunes unused Docker images on TrueNAS SCALE (25.10). The API has no prune method, so it is built from
 # app.image.query + app.query -> truenas_prune_plan (filter_plugins/truenas_prune.py) -> app.image.delete.
 #
-# - Per repository: keep the images in use, one older rollback image, the newest image of a repository no running
-#   app uses (listed in the report) and every image of a repository matching prune_truenas_images_keep.
+# - Per repository: keep the images in use plus prune_truenas_images_rollback_count (2) older rollback images, the 2
+#   newest images of a repository no running app uses (listed in the report) and every image of a repository matching
+#   prune_truenas_images_keep.
 # - app.image.delete runs with force=false, so TrueNAS refuses images a container still uses.
 # - Check mode deletes nothing: it lists the images it would delete and the bytes that would be freed.
 # - Never fails the play: a failed query records an error and ends the role; failed deletes are warnings.
@@ -77,7 +78,8 @@
           ansible.builtin.set_fact:
             prune_truenas_images_results: >-
               {{ prune_truenas_images_images
-                 | truenas_prune_plan(prune_truenas_images_in_use, prune_truenas_images_keep)
+                 | truenas_prune_plan(prune_truenas_images_in_use, prune_truenas_images_keep,
+                                      prune_truenas_images_rollback_count | int)
                  | combine({'failed': []}) }}
             prune_truenas_images_query_ok: true
 
@@ -234,7 +236,7 @@
             report_text: >-
               {{ prune_truenas_images_totals.unused_repos | length }} image
               {{ 'repository' if prune_truenas_images_totals.unused_repos | length == 1 else 'repositories' }}
-              not used by a running app (newest image kept):
+              not used by a running app ({{ prune_truenas_images_rollback_count }} newest kept):
               {{ prune_truenas_images_totals.unused_repos | join(', ') }}
             report_todo: "delete their images by hand (Apps → Manage Images) if the app is gone"
           when: prune_truenas_images_totals.unused_repos | length > 0

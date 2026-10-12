@@ -1,6 +1,6 @@
 ---
 # Prune unused TrueNAS app images on its own -> one Discord summary.
-# Keeps the images in use plus one rollback image per repository; see roles/prune_truenas_images.
+# Keeps the images in use plus 2 rollback images per repository; see roles/prune_truenas_images.
 # The weekly run prunes too (include/truenas_update.yaml), so this is for manual runs.
 
 - name: Prune TrueNAS app images

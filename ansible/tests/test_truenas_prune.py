@@ -52,13 +52,13 @@ def test_in_use_plus_one_older_both_kept():
     assert result["freed_bytes"] == 0
 
 
-def test_three_versions_oldest_deleted():
+def test_three_versions_oldest_deleted_with_one_rollback():
     images = [
         img("v3", "2025-03-01T00:00:00Z", [f"{REPO}:v3"]),
         img("v2", "2025-02-01T00:00:00Z", [f"{REPO}:v2"]),
         img("v1", "2025-01-01T00:00:00Z", [f"{REPO}:v1"]),
     ]
-    result = plan(images, [f"{REPO}:v3"])
+    result = plan(images, [f"{REPO}:v3"], rollback_count=1)
     assert whys(result) == {"v3": "in_use", "v2": "rollback"}
     assert reasons(result) == {"v1": "older"}
     assert result["delete"][0]["repo"] == REPO
@@ -82,7 +82,7 @@ def test_dangling_with_digest_repo_is_rollback():
         img("prev", "2025-01-01T00:00:00Z", [], repos=[f"{repo}@sha256:aaa"], dangling=True),
         img("older", "2024-12-01T00:00:00Z", [], repos=[f"{repo}@sha256:999"], dangling=True),
     ]
-    result = plan(images, [f"{repo}:latest"])
+    result = plan(images, [f"{repo}:latest"], rollback_count=1)
     assert whys(result) == {"cur": "in_use", "prev": "rollback"}
     assert reasons(result) == {"older": "older"}
 
@@ -121,12 +121,55 @@ def test_truenas_25_10_digest_pinned_refs():
     result = plan(images, in_use)
     assert whys(result) == {
         "server-cur": "in_use", "server-prev": "rollback",
-        "pg-cur": "in_use", "pg-prev": "rollback",
+        "pg-cur": "in_use", "pg-prev": "rollback", "pg-old": "rollback",
         "rustfs-cur": "in_use", "rustfs-prev": "rollback",
         "pg18": "in_use",
     }
-    assert reasons(result) == {"pg-old": "older"}
+    assert result["delete"] == []
     assert result["unused_repos"] == []
+    assert reasons(plan(images, in_use, rollback_count=1)) == {"pg-old": "older"}
+
+
+def test_default_keeps_two_rollback_images():
+    images = [
+        img("v4", "2025-04-01T00:00:00Z", [f"{REPO}:v4"]),
+        img("v3", "2025-03-01T00:00:00Z", [f"{REPO}:v3"]),
+        img("v2", "2025-02-01T00:00:00Z", [f"{REPO}:v2"]),
+        img("v1", "2025-01-01T00:00:00Z", [f"{REPO}:v1"]),
+    ]
+    result = plan(images, [f"{REPO}:v4"])
+    assert whys(result) == {"v4": "in_use", "v3": "rollback", "v2": "rollback"}
+    assert reasons(result) == {"v1": "older"}
+
+
+def test_upgrade_left_app_down_keeps_new_and_previous():
+    # the upgraded app is not running, so nothing is in use: the previous (working) image must survive
+    images = [
+        img("new", "2025-03-01T00:00:00Z", [], repos=[f"{REPO}@sha256:ccc"]),
+        img("prev", "2025-02-01T00:00:00Z", [], repos=[f"{REPO}@sha256:bbb"]),
+        img("old", "2025-01-01T00:00:00Z", [], repos=[f"{REPO}@sha256:aaa"]),
+    ]
+    result = plan(images, [])
+    assert whys(result) == {"new": "newest", "prev": "newest"}
+    assert reasons(result) == {"old": "superseded"}
+    assert result["unused_repos"] == [REPO]
+
+
+def test_rollback_count_zero_keeps_only_in_use():
+    images = [
+        img("cur", "2025-02-01T00:00:00Z", [f"{REPO}:v2"]),
+        img("prev", "2025-01-01T00:00:00Z", [f"{REPO}:v1"]),
+        img("stopped", "2025-01-01T00:00:00Z", ["other/app:1"]),
+    ]
+    result = plan(images, [f"{REPO}:v2"], rollback_count=0)
+    assert whys(result) == {"cur": "in_use"}
+    assert reasons(result) == {"prev": "older", "stopped": "superseded"}
+
+
+@pytest.mark.parametrize("count", [-1, 1.5, "2", True])
+def test_bad_rollback_count_raises_type_error(count):
+    with pytest.raises(TypeError):
+        plan([], [], rollback_count=count)
 
 
 def test_dangling_without_repo_deleted():
@@ -140,13 +183,13 @@ def test_dangling_without_repo_deleted():
     assert result["freed_bytes"] == 50
 
 
-def test_repo_not_in_use_keeps_newest_and_is_listed():
+def test_repo_not_in_use_keeps_newest_and_is_listed_with_one_rollback():
     images = [
         img("a2", "2025-02-01T00:00:00Z", ["redis:7.2"]),
         img("a1", "2025-01-01T00:00:00Z", ["redis:7.0"]),
         img("cur", "2025-01-01T00:00:00Z", [f"{REPO}:v1"]),
     ]
-    result = plan(images, [f"{REPO}:v1"])
+    result = plan(images, [f"{REPO}:v1"], rollback_count=1)
     assert whys(result) == {"a2": "newest", "cur": "in_use"}
     assert reasons(result) == {"a1": "superseded"}
     assert result["unused_repos"] == ["redis"]
@@ -171,7 +214,7 @@ def test_two_in_use_tags_rollback_older_than_newest_in_use():
         img("u1", "2025-01-15T00:00:00Z", ["postgres:15"]),
         img("old", "2025-01-01T00:00:00Z", ["postgres:14"]),
     ]
-    result = plan(images, ["postgres:16", "postgres:15"])
+    result = plan(images, ["postgres:16", "postgres:15"], rollback_count=1)
     # The rollback is the newest unused image older than the newest in-use one (u2), i.e. "mid".
     assert whys(result) == {"u2": "in_use", "u1": "in_use", "mid": "rollback"}
     assert reasons(result) == {"old": "older"}
@@ -183,7 +226,7 @@ def test_docker_io_library_normalization():
         img("prev", "2025-01-01T00:00:00", ["nginx:1.26"]),
         img("old", "2024-12-01 00:00:00.5", ["index.docker.io/library/nginx:1.25"]),
     ]
-    result = plan(images, ["nginx:1.27"])
+    result = plan(images, ["nginx:1.27"], rollback_count=1)
     assert whys(result) == {"cur": "in_use", "prev": "rollback"}
     assert reasons(result) == {"old": "older"}
     assert {e["repo"] for e in result["keep"] + result["delete"]} == {"nginx"}
@@ -210,7 +253,7 @@ def test_image_with_tags_in_two_repos_keep_wins():
         img("shared", "2025-01-01T00:00:00Z", ["a:1", "b:1"], size=500),
         img("a0", "2024-12-01T00:00:00Z", ["a:0"], size=7),
     ]
-    result = plan(images, ["a:3", "b:1"])
+    result = plan(images, ["a:3", "b:1"], rollback_count=1)
     assert whys(result) == {"a3": "in_use", "a2": "rollback", "shared": "in_use"}
     assert reasons(result) == {"a0": "older"}
     assert ids(result["keep"]).count("shared") == 1
@@ -224,7 +267,7 @@ def test_image_in_two_repos_deleted_once():
         img("dup", "2025-01-01T00:00:00Z", ["a:0", "b:0"], size=300),
         img("b1", "2025-02-15T00:00:00Z", ["b:1"]),
     ]
-    result = plan(images, ["a:2"])
+    result = plan(images, ["a:2"], rollback_count=1)
     assert reasons(result) == {"dup": "older"}
     assert result["delete"][0]["repo"] == "a"
     assert ids(result["delete"]) == ["dup"]
@@ -246,7 +289,7 @@ def test_freed_bytes_sum_and_sorting():
         img("b_new", "2025-01-01T00:00:00Z", ["b:1"], size=1),
         img("dang", "2023-01-01T00:00:00Z", [], repos=[], size=4, dangling=True),
     ]
-    result = plan(images, ["a:3"])
+    result = plan(images, ["a:3"], rollback_count=1)
     assert ids(result["delete"]) == ["dang", "a_old1", "a_old2", "b_old"]
     assert result["freed_bytes"] == 1000 + 200 + 300 + 4
     assert ids(result["keep"]) == ["a_rb", "a_cur", "b_new"]
