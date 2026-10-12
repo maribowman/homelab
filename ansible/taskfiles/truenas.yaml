@@ -50,15 +50,3 @@ tasks:
     cmd: |
       "{{.VENV}}/bin/ansible-playbook" "{{.PRUNE_PLAYBOOK}}" \
       --vault-password-file "{{.VAULT_PWD_FILE}}" --check --diff {{.CLI_ARGS}}
-
-  syntax:
-    desc: "Check TrueNAS playbooks"
-    silent: true
-    deps: [":init"]
-    vars:
-      ROLLBACK_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_rollback.yaml"}}'
-      PRUNE_PLAYBOOK: '{{joinPath (dir .PLAYBOOK) "truenas_prune.yaml"}}'
-    cmds:
-      - '"{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
-      - '"{{.VENV}}/bin/ansible-playbook" "{{.ROLLBACK_PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'
-      - '"{{.VENV}}/bin/ansible-playbook" "{{.PRUNE_PLAYBOOK}}" --syntax-check {{.CLI_ARGS}}'

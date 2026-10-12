@@ -58,3 +58,15 @@ tasks:
       - "{{.VENV}}/bin/pip install -r {{.REPO_ROOT}}/ansible/requirements.txt"
       - "{{.VENV}}/bin/ansible-galaxy collection install -r {{.REPO_ROOT}}/ansible/requirements.yaml"
       - touch "{{.VENV}}/last-updated"
+
+  syntax:
+    desc: "Syntax-check every playbook in ansible/playbooks"
+    silent: true
+    deps: [init]
+    dir: "{{.TASKFILE_DIR}}"
+    cmd: |
+      set -e
+      for pb in playbooks/*.yaml; do
+        echo "$pb"
+        "{{.VENV}}/bin/ansible-playbook" "$pb" --syntax-check {{.CLI_ARGS}}
+      done

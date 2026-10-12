@@ -77,7 +77,6 @@ Dependencies (venv, collections) are installed automatically on first use. Extra
 | `task ansible:proxmox:check`                | Dry-run of the above (`--check --diff`)                                     |
 | `task ansible:proxmox:rollback HOST=<host>` | Roll a guest back to its newest pre-update snapshot                         |
 | `task ansible:proxmox:ping`                 | Test SSH connectivity to all hosts                                          |
-| `task ansible:proxmox:syntax`               | Syntax-check the Proxmox playbooks                                          |
 | `task ansible:maintenance:run`             | The Sunday run: Proxmox update, then TrueNAS apps, one summary              |
 | `task ansible:maintenance:check`           | Dry-run of the above                                                        |
 | `task ansible:truenas:update`              | Upgrade TrueNAS apps to their newest non-major version, summary             |
@@ -85,14 +84,12 @@ Dependencies (venv, collections) are installed automatically on first use. Extra
 | `task ansible:truenas:rollback APP=<app>`  | Roll a TrueNAS app back (optional `VERSION=<v>`), with its snapshot         |
 | `task ansible:truenas:prune`               | Delete unused app images (keeps in-use + 2 rollback images), summary       |
 | `task ansible:truenas:prune-check`         | Dry-run of the above (lists what would be deleted and freed)                |
-| `task ansible:truenas:syntax`              | Syntax-check the TrueNAS playbooks                                          |
 | `task ansible:docker:deploy`                | Sync stacks, write `.env` files, pull pinned images, `up -d`, health check  |
 | `task ansible:docker:restart STACK=<stack>` | Restart a single stack                                                      |
 | `task ansible:backup:apply`                 | Configure PBS (datastore, jobs, notifications) and the PVE backup job       |
 | `task ansible:backup:check`                 | Dry-run of the above                                                        |
-| `task ansible:backup:syntax`                | Syntax-check the backup playbook                                            |
 | `task ansible:control:provision`            | Create the control LXC                                                      |
 | `task ansible:control:apply`                | Configure the control LXC (run from the laptop)                             |
-| `task ansible:control:syntax`               | Syntax-check the control playbook                                           |
+| `task ansible:syntax`                       | Syntax-check every playbook                                                 |
 
 See [AGENTS.md](AGENTS.md) for the roles, vars and architecture.

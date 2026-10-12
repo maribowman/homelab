@@ -13,6 +13,8 @@ Git is the source of truth: edits made in the Dockge UI drift and get overwritte
 All commands use `task` (Taskfile runner). Dependencies are bootstrapped automatically — `task ansible:init` is a dep of every ansible task and only runs when `requirements.txt`/`requirements.yaml` change. Every task that runs a playbook passes extra args through after `--`, e.g. `task ansible:proxmox:update -- --limit lxc-tailscale`.
 
 ```sh
+task ansible:syntax                 # Syntax-check every playbook in ansible/playbooks (same as CI)
+
 # Docker
 task ansible:docker:deploy          # Rsync stacks to DockerVM, pull images, up -d --remove-orphans, health check
 task ansible:docker:restart STACK=observability  # Restart a single stack (observability | roastbeef-swag | timescaledb)
@@ -21,7 +23,6 @@ task ansible:docker:restart STACK=observability  # Restart a single stack (obser
 task ansible:proxmox:update         # Preflight -> snapshot -> update guests one by one (PBS last) -> PVE host (no reboot) -> summary
 task ansible:proxmox:check          # Same, with --check --diff
 task ansible:proxmox:rollback HOST=lxc-tailscale  # Roll a guest back to its newest pre_update_* snapshot (confirm, or -y)
-task ansible:proxmox:syntax         # Syntax-check the proxmox and rollback playbooks
 task ansible:proxmox:ping           # Test SSH connectivity to all hosts
 
 # TrueNAS apps
@@ -30,22 +31,18 @@ task ansible:truenas:check          # Same, with --check --diff (computes the pl
 task ansible:truenas:rollback APP=immich [VERSION=1.2.3]  # app.rollback to VERSION or the newest rollback version, with snapshot (confirm, or -y)
 task ansible:truenas:prune          # Delete unused app images (keep in-use + 2 rollback images per repository) -> summary
 task ansible:truenas:prune-check    # Same, with --check --diff (lists what would be deleted and freed)
-task ansible:truenas:syntax
 
 # Weekly maintenance (what the Sunday timer runs)
 task ansible:maintenance:run        # Proxmox update + TrueNAS apps -> one summary
 task ansible:maintenance:check
-task ansible:maintenance:syntax
 
 # Backups (PBS + PVE backup job)
 task ansible:backup:apply           # Configure PBS mount/datastore/jobs/notifications and the PVE storage/vzdump job
 task ansible:backup:check           # --check --diff of the above
-task ansible:backup:syntax
 
 # Control node
 task ansible:control:provision      # Create the control LXC via the PVE API
 task ansible:control:apply          # Configure it (run from the laptop: copies the vault, distributes SSH keys)
-task ansible:control:syntax
 ```
 
 ## Schedule
