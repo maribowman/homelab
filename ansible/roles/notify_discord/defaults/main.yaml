@@ -1,5 +1,5 @@
 ---
-# Public interface (see plans/update-and-automation.md, "Shared contracts")
+# Public interface
 notify_title: "Homelab"
 notify_message: ""
 notify_level: info # info | warn | error

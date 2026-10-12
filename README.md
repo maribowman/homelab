@@ -65,7 +65,7 @@ After changing the vault, run `task ansible:control:apply` so the control node g
 
 `.env` files are never kept in the repo or synced from it. `task ansible:docker:deploy` writes `/opt/stacks/<stack>/.env` on the DockerVM from `docker_stack_env` in the vault, so every key a stack needs must be in the vault (values must not contain a single quote). Stacks not listed there keep their existing `.env`.
 
-Other one-time steps (SSH keys, API token privileges, firewall, Renovate) are listed in [AGENTS.md](AGENTS.md#manual-steps-cannot-be-automated) and [proxmox-backup-server-setup.md](proxmox-backup-server-setup.md).
+Other one-time steps (SSH keys, API token privileges, firewall, Renovate, PBS and Synology setup) are listed in [AGENTS.md](AGENTS.md#manual-steps-cannot-be-automated).
 
 ## Commands
 
