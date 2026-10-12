@@ -3,6 +3,7 @@
 # include/run_summary.yaml): prune unused app images (silent) -> free-space guard ->
 # every non-major catalog app upgrade, image pulls for custom apps, majors and OS updates
 # recorded as todos (only when the guard passed) -> prune again, which reports both passes.
+# The second prune runs in always:, so it reports even when the upgrades failed.
 # See roles/prune_truenas_images and roles/update_truenas_apps.
 # prune_truenas_images_enabled: false skips both prunes and the guard.
 #
@@ -23,26 +24,18 @@
             name: prune_truenas_images
           vars:
             prune_truenas_images_report: false
-          when: prune_truenas_images_enabled | default(true)
+          when: prune_truenas_images_enabled | default(true) | bool
 
         - name: Check free space on the apps pool
           ansible.builtin.include_role:
             name: prune_truenas_images
             tasks_from: guard
-          when: prune_truenas_images_enabled | default(true)
+          when: prune_truenas_images_enabled | default(true) | bool
 
         - name: Upgrade apps
           ansible.builtin.include_role:
             name: update_truenas_apps
-          when: prune_truenas_images_space_ok | default(true)
-
-        # deletes the images the upgrades made obsolete and reports both passes
-        - name: Prune app images after the upgrades
-          ansible.builtin.include_role:
-            name: prune_truenas_images
-          vars:
-            prune_truenas_images_report: true
-          when: prune_truenas_images_enabled | default(true)
+          when: prune_truenas_images_space_ok | default(true) | bool
       rescue:
         # update_truenas_apps records per-app failures itself; anything else (e.g. the app query) is recorded here
         - name: Report failure
@@ -57,3 +50,11 @@
             report_todo: "check the run log and re-run task ansible:truenas:update"
           # a failed app query is already recorded by the role
           when: ansible_failed_task.name | default('') != 'Fail on failed app query'
+      always:
+        # deletes the images the upgrades made obsolete and reports both passes; never fails
+        - name: Prune app images after the upgrades
+          ansible.builtin.include_role:
+            name: prune_truenas_images
+          vars:
+            prune_truenas_images_report: true
+          when: prune_truenas_images_enabled | default(true) | bool

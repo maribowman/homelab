@@ -7,11 +7,14 @@ prune_truenas_images_keep: []
 # (stopped app, upgrade that left the app down) keeps this many of its newest images
 prune_truenas_images_rollback_count: 2
 # false: add this pass's counts to the host fact prune_truenas_images_totals and record nothing;
-# true: record the totals plus this pass and reset the fact
+# true: record the totals plus this pass and reset the fact (warnings for unused repositories and
+# stopped apps come from this last pass only)
 prune_truenas_images_report: true
 # Path on the apps pool whose free space the guard (tasks/guard.yaml) checks
 prune_truenas_images_docker_path: /mnt/.ix-apps/docker
-# The guard fails (no upgrades or pulls) below either threshold
+# zfs binary (the pool's fill level); /usr/sbin is not in a non-root user's PATH
+prune_truenas_images_zfs: /usr/sbin/zfs
+# The guard fails (no upgrades or pulls) below either threshold: GB free on the docker dataset, % free of its pool
 prune_truenas_images_min_free_gb: 20
 prune_truenas_images_min_free_pct: 10
 # How midclt is invoked; a string is split on whitespace, a list is used as is

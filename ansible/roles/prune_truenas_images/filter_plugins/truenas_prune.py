@@ -1,13 +1,23 @@
-"""Ansible filter ``truenas_prune_plan``: decide which TrueNAS Docker images may be deleted.
+"""Ansible filters for the TrueNAS image prune.
+
+``truenas_config_images(config)``: image references found in an app's config (``app.config``),
+used for apps that are not running and so have no ``active_workloads``. Collects every string
+under an ``image`` key (compose services of custom apps) and ``repository[:tag]`` of every dict
+with a string ``repository`` (catalog ``images`` values). Returns them sorted and unique; ``[]``
+when none are found.
+
+``truenas_prune_plan``: decide which TrueNAS Docker images may be deleted.
 
 ``images`` is a list of normalized image dicts built by the role from ``app.image.query``::
 
-  {id, repos: [str], tags: [str], created: str ISO, size: int, dangling: bool}
+  {id, repos: [str], tags: [str], created: str ISO, size: int}
 
 ``repos`` holds repository strings (plain ``ghcr.io/x/y`` or digest refs ``ghcr.io/x/y@sha256:…``),
 ``tags`` full tag refs (``ghcr.io/x/y:v1``). ``in_use`` is a list of image references as in
 ``app.query`` → ``active_workloads.images``. ``keep_patterns`` are regexes (``re.search``) on the
-normalized repository.
+normalized repository. ``stopped`` is a list of image references of apps that are not running
+(``truenas_config_images``); only their repository counts: a stopped app has no containers that
+would make TrueNAS refuse the delete, and its image may not carry the configured tag.
 
 References are normalized on both sides: digest (``@sha256:…``) and tag are stripped to get the
 repository (a ``:`` before the last ``/`` is a registry port, not a tag), then a leading
@@ -28,7 +38,10 @@ several repositories takes part in each. Per repository:
                                                      ``newest``; the repository is listed in
                                                      ``unused_repos``
   4. repository matches a keep pattern               keep all, why ``pinned`` (not in unused_repos)
-  5. everything else                                 delete, with reason
+  5. repository referenced by a ``stopped`` app       keep all, why ``stopped_app`` (not in
+                                                     unused_repos), even when a running app
+                                                     uses the same repository
+  6. everything else                                delete, with reason
        ``older``         older than the rollback images (repository in use)
        ``newer_unused``  not in use, created at or after the newest in-use image (failed upgrade)
        ``superseded``    older than the newest images of a repository that is not in use
@@ -36,7 +49,7 @@ several repositories takes part in each. Per repository:
 
 Keep wins across repositories: an image kept in any of its repositories is never deleted. Each
 image appears once, in ``keep`` or in ``delete``; its ``repo`` is the repository that decided
-(for a keep the strongest why: in_use > pinned > rollback > newest; for a delete the first
+(for a keep the strongest why: in_use > pinned > stopped_app > rollback > newest; for a delete the first
 repository by name; ``""`` for dangling images without one).
 
 Returns a dict:
@@ -53,8 +66,8 @@ any number of fractional digits, ``Z``, offsets or no zone (treated as UTC). Bad
 import re
 from datetime import datetime, timezone
 
-_REQUIRED = ("id", "repos", "tags", "created", "size", "dangling")
-_KEEP_RANK = {"in_use": 0, "pinned": 1, "rollback": 2, "newest": 3}
+_REQUIRED = ("id", "repos", "tags", "created", "size")
+_KEEP_RANK = {"in_use": 0, "pinned": 1, "stopped_app": 2, "rollback": 3, "newest": 4}
 _ISO = re.compile(
     r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)(?:[.,](\d+))?\s*(Z|[+-]\d{2}(?::?\d{2})?)?$",
     re.IGNORECASE,
@@ -190,15 +203,44 @@ def _decide_repo(members, in_use_ids, rollback_count):
     return decisions, False
 
 
-def truenas_prune_plan(images, in_use, keep_patterns=None, rollback_count=2):
+def truenas_config_images(config):
+    refs = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            repository = node.get("repository")
+            if isinstance(repository, str) and repository.strip():
+                tag = str(node.get("tag") or "").strip() if isinstance(node.get("tag"), (str, int)) else ""
+                refs.add(f"{repository.strip()}:{tag}" if tag else repository.strip())
+            for key, value in node.items():
+                if key == "image" and isinstance(value, str):
+                    if value.strip():
+                        refs.add(value.strip())
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(config)
+    return sorted(refs)
+
+
+def _ref_list(value, name):
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(r, str) for r in value):
+        raise TypeError(f"truenas_prune_plan: {name} must be a list of strings")
+    return value
+
+
+def truenas_prune_plan(images, in_use, keep_patterns=None, rollback_count=2, stopped=None):
     if isinstance(rollback_count, bool) or not isinstance(rollback_count, int) or rollback_count < 0:
         raise TypeError("truenas_prune_plan: rollback_count must be an int >= 0")
     if not isinstance(images, list):
         raise TypeError(f"truenas_prune_plan: images must be a list, got {type(images).__name__}")
-    if in_use is None:
-        in_use = []
-    if not isinstance(in_use, list) or not all(isinstance(r, str) for r in in_use):
-        raise TypeError("truenas_prune_plan: in_use must be a list of strings")
+    in_use = _ref_list(in_use, "in_use")
+    stopped_repos = {_split_ref(ref)[0] for ref in _ref_list(stopped, "stopped")} - {""}
     if keep_patterns is None:
         keep_patterns = []
     if not isinstance(keep_patterns, list) or not all(isinstance(p, str) for p in keep_patterns):
@@ -229,6 +271,10 @@ def truenas_prune_plan(images, in_use, keep_patterns=None, rollback_count=2):
         if any(p.search(repo) for p in patterns):
             for m in members:
                 decisions[m["id"]].append((repo, "keep", "pinned"))
+            continue
+        if repo in stopped_repos:
+            for m in members:
+                decisions[m["id"]].append((repo, "keep", "in_use" if m["id"] in in_use_ids else "stopped_app"))
             continue
         repo_decisions, unused = _decide_repo(members, in_use_ids, rollback_count)
         if unused:
@@ -272,4 +318,4 @@ class FilterModule:
     """TrueNAS image prune filters."""
 
     def filters(self):
-        return {"truenas_prune_plan": truenas_prune_plan}
+        return {"truenas_prune_plan": truenas_prune_plan, "truenas_config_images": truenas_config_images}

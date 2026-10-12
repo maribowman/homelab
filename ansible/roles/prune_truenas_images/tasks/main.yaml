@@ -5,6 +5,9 @@
 # - Per repository: keep the images in use plus prune_truenas_images_rollback_count (2) older rollback images, the 2
 #   newest images of a repository no running app uses (listed in the report) and every image of a repository matching
 #   prune_truenas_images_keep.
+# - Apps that are not RUNNING have no containers (active_workloads), so their images come from app.config
+#   (truenas_config_images): every image of those repositories is kept, even when a running app uses the same
+#   repository. If an app's images can't be determined, only dangling images are deleted and the app is listed.
 # - app.image.delete runs with force=false, so TrueNAS refuses images a container still uses.
 # - Check mode deletes nothing: it lists the images it would delete and the bytes that would be freed.
 # - Never fails the play: a failed query records an error and ends the role; failed deletes are warnings.
@@ -24,7 +27,7 @@
         prune_truenas_images_call: >-
           {{ (prune_truenas_images_midclt.split() if prune_truenas_images_midclt is string
               else prune_truenas_images_midclt) + ['call'] }}
-        prune_truenas_images_results: {delete: [], keep: [], unused_repos: [], freed_bytes: 0, failed: []}
+        prune_truenas_images_results: {delete: [], keep: [], unused_repos: [], freed_bytes: 0, failed: [], unknown_apps: []}
         prune_truenas_images_deleted: []
         prune_truenas_images_query_ok: false
 
@@ -65,22 +68,56 @@
                       'tags': (i.repo_tags | default([], true)
                                + parsed | map(attribute='complete_tag', default='') | list) | select | unique | list,
                       'created': created,
-                      'size': i.size | default(0, true) | int,
-                      'dangling': i.dangling | default(false) | bool}) -%}
+                      'size': i.size | default(0, true) | int}) -%}
               {%- endfor -%}
               {{ out }}
             prune_truenas_images_in_use: >-
               {{ prune_truenas_images_app_query.stdout | from_json
                  | map(attribute='active_workloads', default={}) | map('default', {}, true)
                  | map(attribute='images', default=[]) | flatten | select | unique | sort | list }}
+            prune_truenas_images_not_running: >-
+              {{ prune_truenas_images_app_query.stdout | from_json
+                 | rejectattr('state', 'defined') | map(attribute='name') | list
+                 + prune_truenas_images_app_query.stdout | from_json
+                 | selectattr('state', 'defined') | rejectattr('state', 'eq', 'RUNNING') | map(attribute='name') | list }}
 
+        # the config holds the app's secrets, so nothing of it is logged
+        - name: Query the config of apps that are not running
+          ansible.builtin.command:
+            argv: "{{ prune_truenas_images_call + ['app.config', item] }}"
+          register: prune_truenas_images_config_query
+          changed_when: false
+          failed_when: false # an app without a readable config is listed in prune_truenas_images_unknown_apps
+          check_mode: false
+          no_log: true
+          loop: "{{ prune_truenas_images_not_running }}"
+
+        - name: Parse images of apps that are not running
+          ansible.builtin.set_fact:
+            prune_truenas_images_stopped: >-
+              {%- set out = {'refs': [], 'unknown': []} -%}
+              {%- for r in prune_truenas_images_config_query.results | default([]) -%}
+                {%- set refs = (r.stdout | from_json | truenas_config_images)
+                               if r.rc | default(1) == 0 and r.stdout | default('') | trim | length > 0 else [] -%}
+                {%- if refs | length > 0 -%}
+                  {%- set _ = out.refs.extend(refs) -%}
+                {%- else -%}
+                  {%- set _ = out.unknown.append(r.item) -%}
+                {%- endif -%}
+              {%- endfor -%}
+              {{ {'refs': out.refs | unique | sort | list, 'unknown': out.unknown | sort | list} }}
+          no_log: true
+
+        # with an app whose images are unknown, the keep pattern '' pins every repository: only dangling images go
         - name: Plan which images to delete
           ansible.builtin.set_fact:
             prune_truenas_images_results: >-
               {{ prune_truenas_images_images
-                 | truenas_prune_plan(prune_truenas_images_in_use, prune_truenas_images_keep,
-                                      prune_truenas_images_rollback_count | int)
-                 | combine({'failed': []}) }}
+                 | truenas_prune_plan(prune_truenas_images_in_use,
+                                      prune_truenas_images_keep + ([''] if prune_truenas_images_stopped.unknown else []),
+                                      prune_truenas_images_rollback_count | int,
+                                      prune_truenas_images_stopped.refs)
+                 | combine({'failed': [], 'unknown_apps': prune_truenas_images_stopped.unknown}) }}
             prune_truenas_images_query_ok: true
 
       rescue:
@@ -98,10 +135,12 @@
             report_todo: >-
               check that '{{ prune_truenas_images_call | join(' ') }} app.image.query' works for the ansible user
               (no images were deleted)
-          # the prune runs before and after the upgrades; the same failure is recorded once
-          when: >-
-            report_text | trim not in (hostvars[inventory_hostname].run_report_entries | default([])
-                                       | map(attribute='text') | list)
+          # the prune runs before and after the upgrades; a failure is recorded once
+          when: not prune_truenas_images_query_failure_recorded | default(false)
+
+        - name: Remember the recorded failure
+          ansible.builtin.set_fact:
+            prune_truenas_images_query_failure_recorded: true
 
     - name: Delete images
       when: prune_truenas_images_query_ok
@@ -152,10 +191,11 @@
     - name: Add this pass to the prune totals
       vars:
         prune_truenas_images_old: >-
-          {{ {'deleted': [], 'failed': [], 'unused_repos': [], 'runs': 0}
+          {{ {'deleted': [], 'failed': [], 'unused_repos': [], 'unknown_apps': [], 'runs': 0}
              | combine(prune_truenas_images_totals | default({}, true)) }}
         prune_truenas_images_attempted: "{{ prune_truenas_images_results.delete | map(attribute='id') | list }}"
-      # check mode plans the same images in both passes, so images are counted once by id
+      # check mode plans the same images in both passes, so images are counted once by id; unused repositories and
+      # unknown apps describe the current state, so the last pass with a successful query wins
       ansible.builtin.set_fact:
         prune_truenas_images_totals: >-
           {%- set old = prune_truenas_images_old -%}
@@ -173,39 +213,18 @@
           {%- endfor -%}
           {{ {'deleted': deleted,
               'failed': failed,
-              'unused_repos': (old.unused_repos + prune_truenas_images_results.unused_repos) | unique | sort | list,
+              'unused_repos': prune_truenas_images_results.unused_repos
+                              if prune_truenas_images_query_ok else old.unused_repos,
+              'unknown_apps': prune_truenas_images_results.unknown_apps
+                              if prune_truenas_images_query_ok else old.unknown_apps,
               'runs': old.runs + (1 if prune_truenas_images_query_ok else 0)} }}
 
     - name: Report the prune
       when: prune_truenas_images_report | bool
       block:
+        # a failed measurement leaves the free space out of the report
         - name: Measure free space for the report
-          ansible.builtin.command:
-            argv:
-              - df
-              - -B1
-              - --output=avail,size
-              - "{{ prune_truenas_images_docker_path }}"
-          register: prune_truenas_images_report_df
-          changed_when: false
-          failed_when: false # falls back to the guard's measurement, else the free space is left out
-          check_mode: false
-
-        - name: Parse free space for the report
-          vars:
-            prune_truenas_images_report_fields: >-
-              {{ (prune_truenas_images_report_df.stdout_lines | default([]) | last | default('')).split()
-                 if prune_truenas_images_report_df.rc | default(1) == 0 else [] }}
-          ansible.builtin.set_fact:
-            prune_truenas_images_report_free: >-
-              {{ {'avail_bytes': prune_truenas_images_report_fields[0] | int,
-                  'size_bytes': prune_truenas_images_report_fields[1] | int,
-                  'pct': (prune_truenas_images_report_fields[0] | int * 100
-                          / [prune_truenas_images_report_fields[1] | int, 1] | max) | round(1)}
-                 if prune_truenas_images_report_fields | length == 2
-                    and prune_truenas_images_report_fields | select('match', '^[0-9]+$') | list | length == 2
-                    and prune_truenas_images_report_fields[1] | int > 0
-                 else prune_truenas_images_free | default({}, true) }}
+          ansible.builtin.include_tasks: measure.yaml
 
         - name: Report pruned images
           ansible.builtin.include_role:
@@ -222,9 +241,9 @@
                   if ansible_check_mode
                   else 'pruned ' ~ prune_truenas_images_count ~ prune_truenas_images_noun ~ ', freed ' ~ prune_truenas_images_freed)
                  if prune_truenas_images_count | int > 0 else 'no unused images' }}{{
-                 (' (free ' ~ '%.1f GB' | format(prune_truenas_images_report_free.avail_bytes / 1000000000)
-                  ~ ' / ' ~ prune_truenas_images_report_free.pct | round | int ~ ' %)')
-                 if prune_truenas_images_report_free | length > 0 else '' }}
+                 (' (free ' ~ '%.1f GB' | format(prune_truenas_images_free.avail_bytes / 1000000000)
+                  ~ ' / ' ~ prune_truenas_images_free.pct | round | int ~ ' % of the pool)')
+                 if prune_truenas_images_free | length > 0 else '' }}
           when: prune_truenas_images_totals.runs > 0
 
         - name: Report unused repositories
@@ -241,6 +260,20 @@
             report_todo: "delete their images by hand (Apps → Manage Images) if the app is gone"
           when: prune_truenas_images_totals.unused_repos | length > 0
 
+        - name: Report apps with unknown images
+          ansible.builtin.include_role:
+            name: run_report
+            tasks_from: record
+          vars:
+            report_level: warn
+            report_text: >-
+              {{ prune_truenas_images_totals.unknown_apps | length }}
+              {{ 'app' if prune_truenas_images_totals.unknown_apps | length == 1 else 'apps' }} not running and
+              without images in app.config ({{ prune_truenas_images_totals.unknown_apps | join(', ') }}):
+              only dangling images were pruned
+            report_todo: "start or delete {{ prune_truenas_images_totals.unknown_apps | join(', ') }} so the prune can run fully"
+          when: prune_truenas_images_totals.unknown_apps | length > 0
+
         - name: Report failed deletes
           ansible.builtin.include_role:
             name: run_report
@@ -256,4 +289,5 @@
 
         - name: Reset the prune totals
           ansible.builtin.set_fact:
-            prune_truenas_images_totals: {deleted: [], failed: [], unused_repos: [], runs: 0}
+            prune_truenas_images_totals: {deleted: [], failed: [], unused_repos: [], unknown_apps: [], runs: 0}
+            prune_truenas_images_query_failure_recorded: false
