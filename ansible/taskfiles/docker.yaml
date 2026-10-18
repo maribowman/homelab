@@ -22,3 +22,29 @@ tasks:
       "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
       --vault-password-file "{{.VAULT_PWD_FILE}}" \
       --extra-vars "target_stack={{.STACK}}" {{.CLI_ARGS}}
+
+  down:
+    desc: "Stop a single docker stack; automated deploys skip it until docker:up"
+    silent: true
+    deps: [":init"]
+    requires:
+      vars:
+        - name: STACK
+          enum: [observability, roastbeef-swag, timescaledb]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      --extra-vars "docker_state=down target_stack={{.STACK}}" {{.CLI_ARGS}}
+
+  up:
+    desc: "Start a single docker stack again (clears the docker:down marker)"
+    silent: true
+    deps: [":init"]
+    requires:
+      vars:
+        - name: STACK
+          enum: [observability, roastbeef-swag, timescaledb]
+    cmd: |
+      "{{.VENV}}/bin/ansible-playbook" "{{.PLAYBOOK}}" \
+      --vault-password-file "{{.VAULT_PWD_FILE}}" \
+      --extra-vars "docker_state=up target_stack={{.STACK}}" {{.CLI_ARGS}}

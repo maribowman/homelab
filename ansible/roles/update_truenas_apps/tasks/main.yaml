@@ -73,6 +73,8 @@
       ansible.builtin.fail:
         msg: "app.query failed on {{ inventory_hostname }}, no app was updated"
 
+# STOPPED apps are skipped: app.upgrade refuses them ("must not be in stopped state") and app.pull_images with
+# redeploy would start them
 - name: Select apps to update
   vars:
     update_truenas_apps_candidates: >-
@@ -82,10 +84,13 @@
   ansible.builtin.set_fact:
     update_truenas_apps_todo: >-
       {{ update_truenas_apps_candidates | rejectattr('name', 'in', update_truenas_apps_exclude)
-         | sort(attribute='name') | list }}
+         | rejectattr('state', 'eq', 'STOPPED') | sort(attribute='name') | list }}
     update_truenas_apps_excluded: >-
       {{ update_truenas_apps_candidates | selectattr('name', 'in', update_truenas_apps_exclude)
          | map(attribute='name') | sort | list }}
+    update_truenas_apps_stopped: >-
+      {{ update_truenas_apps_candidates | rejectattr('name', 'in', update_truenas_apps_exclude)
+         | selectattr('state', 'eq', 'STOPPED') | map(attribute='name') | sort | list }}
 
 - name: Update apps one by one
   ansible.builtin.include_tasks: app.yaml
@@ -103,7 +108,7 @@
          | map(attribute='name') | list }}
     update_truenas_apps_not_current: >-
       {{ update_truenas_apps_results | selectattr('status', 'in', ['held_back', 'failed'])
-         | map(attribute='name') | list + update_truenas_apps_excluded }}
+         | map(attribute='name') | list + update_truenas_apps_excluded + update_truenas_apps_stopped }}
   ansible.builtin.set_fact:
     update_truenas_apps_summary: >-
       {%- set parts = [] -%}
@@ -129,6 +134,9 @@
       {%- endif -%}
       {%- if update_truenas_apps_excluded -%}
         {%- set _ = parts.append({'text': 'excluded with update', 'items': update_truenas_apps_excluded}) -%}
+      {%- endif -%}
+      {%- if update_truenas_apps_stopped -%}
+        {%- set _ = parts.append({'text': 'stopped with update (start to upgrade)', 'items': update_truenas_apps_stopped}) -%}
       {%- endif -%}
       {{ parts }}
 

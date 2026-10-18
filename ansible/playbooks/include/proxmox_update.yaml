@@ -2,7 +2,9 @@
 # Proxmox maintenance (imported by proxmox.yaml, followed by include/run_summary.yaml):
 #   1. Preflight: warn when a guest has no recent backup (never blocks the run)
 #   2. Guests one at a time, PBS last:
-#      snapshot -> [docker down] -> apt dist-upgrade -> reboot if needed -> [docker up + health]
+#      snapshot -> [docker live-restore] -> apt dist-upgrade -> reboot if needed -> [sync + pull docker stacks + health]
+#      The stacks keep running during apt (live-restore covers a dockerd restart); only a reboot stops them, and
+#      the pull afterwards recreates only the containers whose image or config changed.
 #   3. PVE host: apt dist-upgrade, never rebooted; warns when a reboot is pending
 #
 # Nothing is sent from here: every result is recorded with run_report (record) and the
@@ -74,29 +76,26 @@
 
     - name: Update guest
       block:
-        - name: Stop docker stacks
+        - name: Enable docker live-restore
           ansible.builtin.include_role:
-            name: deploy_docker_stacks
-          vars:
-            docker_state: down
+            name: docker_daemon
           when: inventory_hostname in groups['docker_hosts']
 
         - name: Upgrade packages
           ansible.builtin.include_role:
             name: update_proxmox_machines
 
-        - name: Start docker stacks
+        - name: Sync docker stacks
           ansible.builtin.include_role:
-            name: deploy_docker_stacks
-          vars:
-            docker_state: up
+            name: sync_docker_stacks
           when: inventory_hostname in groups['docker_hosts']
 
-        - name: Check docker stack health
+        # up -d --pull always: unchanged containers keep running; also starts what a reboot left stopped
+        - name: Deploy docker stacks
           ansible.builtin.include_role:
             name: deploy_docker_stacks
           vars:
-            docker_state: health
+            docker_state: pull
           when: inventory_hostname in groups['docker_hosts']
 
         - name: Record updated guest
@@ -111,8 +110,7 @@
             report_level: ok
             report_text: >-
               {{ update_proxmox_machines_packages }} packages{{
-              ', rebooted' if update_proxmox_machines_rebooted else '' }}{{
-              ', stacks healthy' if inventory_hostname in groups['docker_hosts'] else '' }}
+              ', rebooted' if update_proxmox_machines_rebooted else '' }}
       rescue:
         - name: Record failed guest
           ansible.builtin.set_fact:

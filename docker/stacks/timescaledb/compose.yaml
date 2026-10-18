@@ -3,6 +3,8 @@ services:
     image: timescale/timescaledb-ha:pg18@sha256:7d352e92884862549363b96d2b791c31fcd941e570308780890b27ae1449c829 # must match the running image; bump only when Scribe supports it
     container_name: timescaledb
     restart: unless-stopped
+    # time for a clean Postgres shutdown (docker compose down, reboot, dockerd restart) before SIGKILL; default 10s
+    stop_grace_period: 1m
     ports:
       # Bound to all interfaces on purpose: Home Assistant connects over the LAN.
       # Accepted exposure for a trusted LAN-only homelab.

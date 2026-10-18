@@ -11,4 +11,4 @@ WorkingDirectory={{ control_repo_path }}
 Environment=HOME=/root
 Environment=HOMELAB_REPORT_MARKER={{ control_node_report_marker_prefix }}.%n
 TimeoutStartSec={{ control_node_service_timeout }}
-ExecStart=/usr/bin/flock {{ control_node_lock_file }} /bin/sh -c 'rm -f "$$HOMELAB_REPORT_MARKER" && git pull --ff-only && task ansible:maintenance:run'
+ExecStart=/usr/bin/flock {{ control_node_lock_file }} /bin/sh -c 'rm -f "$$HOMELAB_REPORT_MARKER" && git pull --ff-only && task ansible:maintenance:run -- -e sync_pull_remote=false'

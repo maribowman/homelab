@@ -6,6 +6,8 @@
     recursive: true
     rsync_opts:
       - "--exclude=data"
+      # marker of a manually stopped stack (deploy_docker_stacks), lives only on the remote
+      - "--exclude=.down"
       # .env files are written from the vault below; .env.example and other .env* files are never synced
       - "--exclude=.env*"
 
@@ -40,5 +42,7 @@
     rsync_opts:
       - "--exclude=dockge"
       - "--exclude=data"
+      # marker of a manually stopped stack (deploy_docker_stacks), lives only on the remote
+      - "--exclude=.down"
       - "--exclude=.env*"
   when: sync_pull_remote | bool

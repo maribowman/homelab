@@ -1,0 +1,5 @@
+---
+# Merged into /etc/docker/daemon.json (existing keys are kept). live-restore keeps containers running while dockerd
+# restarts, e.g. when apt upgrades docker-ce or containerd.
+docker_daemon_settings:
+  live-restore: true

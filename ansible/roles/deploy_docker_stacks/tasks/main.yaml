@@ -34,6 +34,35 @@
         fail_msg: "No docker stack found for target_stack='{{ target_stack }}' under {{ dockge_stacks_path }}"
         quiet: true
 
+    # A stack stopped with docker_state=down keeps a .down marker until docker_state=up; pull, restart and health
+    # skip it, so automated runs leave it down
+    - name: Find manually stopped docker stacks
+      ansible.builtin.stat:
+        path: "{{ item }}/.down"
+      loop: "{{ deploy_docker_stacks_dirs }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      register: deploy_docker_stacks_markers
+
+    - name: Select docker stacks to run
+      vars:
+        deploy_docker_stacks_held_dirs: >-
+          {{ deploy_docker_stacks_markers.results | selectattr('stat.exists') | map(attribute='item') | list }}
+      ansible.builtin.set_fact:
+        deploy_docker_stacks_held: "{{ deploy_docker_stacks_held_dirs | map('basename') | list }}"
+        deploy_docker_stacks_run_dirs: >-
+          {{ deploy_docker_stacks_dirs if docker_state in ['up', 'down']
+             else deploy_docker_stacks_dirs | reject('in', deploy_docker_stacks_held_dirs) | list }}
+
+    - name: Clear stop markers
+      ansible.builtin.file:
+        path: "{{ item }}/.down"
+        state: absent
+      loop: "{{ deploy_docker_stacks_run_dirs }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      when: docker_state == 'up'
+
     - name: Run docker compose {{ docker_state }}
       vars:
         deploy_docker_stacks_args:
@@ -45,7 +74,7 @@
         argv: "{{ ['docker', 'compose'] + deploy_docker_stacks_args[docker_state] }}"
       args:
         chdir: "{{ item }}"
-      loop: "{{ deploy_docker_stacks_dirs }}"
+      loop: "{{ deploy_docker_stacks_run_dirs }}"
       loop_control:
         label: "{{ item | basename }}"
       register: deploy_docker_stacks_compose
@@ -53,6 +82,18 @@
         (deploy_docker_stacks_compose.stdout ~ deploy_docker_stacks_compose.stderr)
         is search('(Created|Recreated|Started|Restarted|Stopped|Removed)')
       when: docker_state != 'health'
+
+    - name: Set stop markers
+      ansible.builtin.file:
+        path: "{{ item }}/.down"
+        state: touch
+        mode: "0644"
+        modification_time: preserve
+        access_time: preserve
+      loop: "{{ deploy_docker_stacks_run_dirs }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      when: docker_state == 'down'
 
     - name: Wait for docker stack containers to be running and healthy
       vars:
@@ -68,7 +109,7 @@
       ansible.builtin.command:
         cmd: docker compose ps --all --format json
         chdir: "{{ item }}"
-      loop: "{{ deploy_docker_stacks_dirs }}"
+      loop: "{{ deploy_docker_stacks_run_dirs }}"
       loop_control:
         label: "{{ item | basename }}"
       register: deploy_docker_stacks_health
@@ -95,15 +136,28 @@
              | map(attribute='item') | map('basename') | list }}
         report_level: ok
         report_text: >-
-          {{ 'restarted:' if docker_state == 'restart'
-             else ('deployed ' ~ deploy_docker_stacks_dirs | length ~ ' stacks, '
+          {{ {'restart': 'restarted:', 'up': 'started:', 'down': 'stopped (stays down until docker:up):'}[docker_state]
+             if docker_state != 'pull'
+             else ('deployed ' ~ deploy_docker_stacks_run_dirs | length ~ ' stacks, '
                    ~ (('updated:' if deploy_docker_stacks_updated else 'none changed')
                       if not ansible_check_mode else 'changes unknown in check mode')) }}
         report_items: >-
-          {{ deploy_docker_stacks_dirs | map('basename') | list if docker_state == 'restart'
+          {{ deploy_docker_stacks_run_dirs | map('basename') | list if docker_state != 'pull'
              else (deploy_docker_stacks_updated if not ansible_check_mode else []) }}
-      # up/down/health are steps of the proxmox update, which reports the guest as a whole
-      when: docker_state in ['pull', 'restart']
+      # health only verifies, the caller reports
+      when: docker_state != 'health'
+
+    - name: Report manually stopped docker stacks
+      ansible.builtin.include_role:
+        name: run_report
+        tasks_from: record
+      vars:
+        report_level: ok
+        report_text: "stopped manually, skipped (start with task ansible:docker:up STACK=<name>):"
+        report_items: "{{ deploy_docker_stacks_held }}"
+      when:
+        - docker_state in ['pull', 'restart']
+        - deploy_docker_stacks_held | length > 0
 
   rescue:
     - name: Collect failed docker stacks

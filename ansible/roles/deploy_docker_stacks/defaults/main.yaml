@@ -1,5 +1,5 @@
 ---
-docker_state: restart # up | down | restart | pull | health
+docker_state: restart # up | down | restart | pull | health (down leaves a .down marker: pull, restart and health skip the stack until up)
 target_stack: ""
 
 # health: poll every <delay>s, give up after <retries> attempts

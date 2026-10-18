@@ -1,4 +1,7 @@
 ---
+# Local stacks directory, relative to this role (playbook_dir changes with import_playbook from include/)
+local_stacks_path: "{{ role_path }}/../../../docker/stacks"
+
 # Pull remote-only stacks (e.g. created in the Dockge UI) back into the local repo.
 # Set to false on the control node, where git is the only source of truth.
 sync_pull_remote: true

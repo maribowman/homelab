@@ -67,6 +67,5 @@ tasks:
     cmd: |
       set -e
       for pb in playbooks/*.yaml; do
-        echo "$pb"
         "{{.VENV}}/bin/ansible-playbook" "$pb" --syntax-check {{.CLI_ARGS}}
       done

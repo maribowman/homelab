@@ -1,0 +1,24 @@
+---
+# Merges docker_daemon_settings into /etc/docker/daemon.json and reloads dockerd on a change (handler, flushed at
+# the end of the role).
+
+- name: Read daemon.json
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: docker_daemon_current
+  failed_when: false # missing file = no settings yet
+
+- name: Write daemon.json
+  ansible.builtin.copy:
+    content: >-
+      {{ ((docker_daemon_current.content | b64decode | from_json) if docker_daemon_current.content is defined else {})
+         | combine(docker_daemon_settings) | to_nice_json(indent=2) ~ '\n' }}
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload dockerd
+
+# Reload now, so live-restore is active before apt upgrades docker
+- name: Apply daemon.json
+  ansible.builtin.meta: flush_handlers
