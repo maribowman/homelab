@@ -10,9 +10,10 @@
 
 - name: Write daemon.json
   ansible.builtin.copy:
-    content: >-
+    # Literal block: its own trailing newline ends the file ('\n' inside the expression stays a literal backslash-n)
+    content: |
       {{ ((docker_daemon_current.content | b64decode | from_json) if docker_daemon_current.content is defined else {})
-         | combine(docker_daemon_settings) | to_nice_json(indent=2) ~ '\n' }}
+         | combine(docker_daemon_settings) | to_nice_json(indent=2) }}
     dest: /etc/docker/daemon.json
     owner: root
     group: root
